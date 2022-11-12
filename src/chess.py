@@ -227,7 +227,7 @@ def initialize_pos(board:list[list]) -> None:
                 if isinstance(case, Piece):
                     case._pos = Piece._index_to_pos((i,j))
 
-def possible_moves(board:list[list], turn:str) -> list[Move]:
+def possible_moves(board:list[list], turn:str) -> tuple[list[Move],list[Move]]:
 
         # Create two lists, one containing the player moves and another containing the ennemy moves
         psb_mv_player:list[Move] = []
@@ -252,38 +252,47 @@ def possible_moves(board:list[list], turn:str) -> list[Move]:
         for mv in rm_mv:
             if mv.piece._color == turn: psb_mv_player.remove(mv)
             else: psb_mv_holder.remove(mv)
-
-        # is_check_mate(board, psb_mv_player, psb_mv_holder)
                         
         return psb_mv_player, psb_mv_holder
 
 def is_check(player_moves:list[Move], holder_moves:list[Move]) -> bool:
 
     # Return if the current player is in check state
+    pos = ''
 
     check = False
     for pl_mv in player_moves:
         if isinstance(pl_mv.piece, King):
-            for hd_mv in holder_moves:
-                if hd_mv.to == pl_mv.piece._pos and hd_mv.pot_threat:
-                    check = True
+            pos = pl_mv.piece._pos
+            break
+
+    for hd_mv in holder_moves:
+        if hd_mv.to == pos and hd_mv.pot_threat:
+            check = True
+
     return check
 
 
-def is_check_mate(board:list[list[str or Piece]], player_moves:list[Move], holder_moves:list[Move]) -> bool:
+def is_check_mate(board:list[list[str or Piece]], player_moves:list[Move], game_info:dict) -> tuple[bool,list[bool]]:
     
     # Return if the current player is in check_state
 
     check_mate = False
-    next_move_board = copy.deepcopy(board)
 
-    for pl_mv in player_moves:
-        if isinstance(pl_mv.piece, King):
+    if not game_info['check']:
+        return check_mate
+    else:
+        lst_check = []
+        for pl_mv in player_moves:
             next_move_board = copy.deepcopy(board)
-            move(pl_mv._from, pl_mv.to, next_move_board, player_moves, {'turn':pl_mv.piece._color})
-            clear()
-            show_board(next_move_board)
-            sleep(5)
+            rea_move = copy.deepcopy(pl_mv)
+            move(rea_move, next_move_board, {'turn':pl_mv.piece._color})
+            psb_mv, hld_mv = possible_moves(next_move_board, pl_mv.piece._color)
+            lst_check.append(is_check(psb_mv, hld_mv))
+            # lst_check.append(f'{pl_mv.piece} : {pl_mv._from}->{pl_mv.to} :: {is_check(psb_mv, hld_mv)}')
+        
+        check_mate = all(lst_check)
+        return check_mate
 
 
 def show_board(board:list[list[str or Piece]]):
@@ -306,15 +315,19 @@ def show(board:list[list[str or Piece]], game_info:dict) -> None:
         show_board(board)
 
         cprint('\nTurn : ', end='')
+
+        ccm_string = ''
         col = 'red' if game_info['turn'] == Piece.WHITE else 'blue'
-        opp_col = 'blue' if col == 'red' else 'red'
+        name = 'White' if game_info['turn'] == Piece.WHITE else 'Black'
+
         cprint(f"{game_info['turn']}", col, end='\n')
 
         if game_info['check']:
-            cprint('\nCheck', opp_col, end='\n')
+            ccm_string = f'\n{name} in check'
+            if game_info['check_mate']:
+                ccm_string += ' mate'
 
-        if game_info['check_mate']:
-            cprint(f"\nVictory for {game_info['turn']}", opp_col, end='\n')
+        cprint(ccm_string, col, end='\n')
 
 def ask_move() -> tuple[str, str]:
     ipt = input('\nNext move ("form to" format) : ')
@@ -322,47 +335,51 @@ def ask_move() -> tuple[str, str]:
         _from, to = tuple(ipt.split(' '))
     return _from, to
 
-def move(_from:str, to:str, board:list[list[str or Piece]], psb_mv:list[Move], game_info:dict) -> None:
-        save_move:Move = None
-        for move in psb_mv:
-            if move._from == _from and move.to == to:
+def find_move(_from:str, to:str, lst_mv:list[Move]) -> Move:
+    save_move = None
+    for move in lst_mv:
+        if move._from == _from and move.to == to:
                 save_move = move
-        if save_move is not None:
-            save_move.piece.moves.append(save_move)
+    return save_move
 
-            findex = Piece._pos_to_index(save_move._from)
-            fto = Piece._pos_to_index(save_move.to)
+def move(move:Move, board:list[list[str or Piece]], game_info:dict) -> None:
 
-            save_move.piece._pos = save_move.to
-            if save_move.piece.not_moved: save_move.piece.not_moved = False
+        if move is not None:
+            move.piece.moves.append(move)
 
-            if save_move.upgrade:
+            findex = Piece._pos_to_index(move._from)
+            fto = Piece._pos_to_index(move.to)
+
+            move.piece._pos = move.to
+            if move.piece.not_moved: move.piece.not_moved = False
+
+            if move.upgrade:
                 print('\nNew type of piece : (n, b, r, q)')
                 ask_new = input()
-                board[fto[0]][fto[1]] = convertir(save_move.piece, ask_new)
+                board[fto[0]][fto[1]] = convertir(move.piece, ask_new)
             else:
-                board[fto[0]][fto[1]] = save_move.piece
+                board[fto[0]][fto[1]] = move.piece
 
-            if save_move.rook:
-                rook_index = Piece._pos_to_index(save_move.piece_rook._pos)
-                new_rook_index = (fto[0]-save_move.dir_rook[0],fto[1]-save_move.dir_rook[1])
+            if move.rook:
+                rook_index = Piece._pos_to_index(move.piece_rook._pos)
+                new_rook_index = (fto[0]-move.dir_rook[0],fto[1]-move.dir_rook[1])
                 board[rook_index[0]][rook_index[1]] = _EMPTY_CASE
-                board[new_rook_index[0]][new_rook_index[1]] = save_move.piece_rook
-                save_move.piece_rook._pos = Piece._index_to_pos(new_rook_index)
-                save_move.piece_rook.not_moved = False # If the rook has already moved, not rook is possible
+                board[new_rook_index[0]][new_rook_index[1]] = move.piece_rook
+                move.piece_rook._pos = Piece._index_to_pos(new_rook_index)
+                move.piece_rook.not_moved = False # If the rook has already moved, not rook is possible
             
             board[findex[0]][findex[1]] = _EMPTY_CASE
 
-            if save_move.en_passant:
-                board[fto[0]-save_move.piece.dir][fto[1]] = _EMPTY_CASE
+            if move.en_passant:
+                board[fto[0]-move.piece.dir][fto[1]] = _EMPTY_CASE
 
-            game_info['turn'] = Piece.BLACK if save_move.piece._color == Piece.WHITE else Piece.WHITE
+            game_info['turn'] = Piece.BLACK if move.piece._color == Piece.WHITE else Piece.WHITE
 
 #######################
 ### Other functions ###
 #######################
 
-def clear():
+def clear() -> None:
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def add(*tpls) -> tuple:
@@ -392,23 +409,14 @@ _INIT_BOARD = [[Rook(Piece.BLACK),Night(Piece.BLACK),Bishop(Piece.BLACK),Queen(P
             [Pawn(Piece.WHITE) for _ in range(8)],
             [Rook(Piece.WHITE),Night(Piece.WHITE),Bishop(Piece.WHITE),Queen(Piece.WHITE),King(Piece.WHITE),Bishop(Piece.WHITE),Night(Piece.WHITE),Rook(Piece.WHITE)]]
 
-_TEST = [[_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+_TEST = [[Rook(Piece.BLACK),Night(Piece.BLACK),Bishop(Piece.BLACK),Queen(Piece.BLACK),King(Piece.BLACK),Bishop(Piece.BLACK),Night(Piece.BLACK),Rook(Piece.BLACK)],
+            [Pawn(Piece.BLACK) for _ in range(8)],
             [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
             [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Rook(Piece.BLACK),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Bishop(Piece.BLACK),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Queen(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [Rook(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,King(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,Rook(Piece.WHITE)]]
-
-_TEST_A = [[Rook(Piece.BLACK),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,King(Piece.BLACK),_EMPTY_CASE,_EMPTY_CASE,Rook(Piece.BLACK)],
-        [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-        [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Rook(Piece.WHITE),_EMPTY_CASE],
-        [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-        [_EMPTY_CASE,_EMPTY_CASE,Rook(Piece.BLACK),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-        [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-        [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-        [Rook(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,King(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,Rook(Piece.WHITE)]]
+            [_EMPTY_CASE,_EMPTY_CASE,Bishop(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Queen(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE],
+            [Pawn(Piece.WHITE) for _ in range(8)],
+            [Rook(Piece.WHITE),Night(Piece.WHITE),Bishop(Piece.WHITE),_EMPTY_CASE,King(Piece.WHITE),_EMPTY_CASE,Night(Piece.WHITE),Rook(Piece.WHITE)]]
 
 ############
 ### main ###
@@ -430,17 +438,16 @@ def main():
 
     ### Mainloop ###
     while not game_info['check_mate']:
+
         show(game_board, game_info)
 
-        # print('\nplayer move :')
-        # for mv in psb_mv: print(mv)
-
-        # print('\nhd move :')
-        # for mv in hd_mv: print(mv)
-
         _from, to = ask_move()
-        move(_from, to, game_board, psb_mv, game_info)
+        rea_move = find_move(_from, to, psb_mv)
+        move(rea_move, game_board, game_info)
+
         psb_mv, hd_mv = possible_moves(game_board, game_info['turn'])
+        game_info['check'] = is_check(psb_mv, hd_mv)
+        game_info['check_mate'] = is_check_mate(game_board, psb_mv, game_info)
 
     ### Show final position and winner ###
     show(game_board, game_info)
