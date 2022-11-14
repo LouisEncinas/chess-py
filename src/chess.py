@@ -204,7 +204,18 @@ class Queen(InfiniteMovementPiece):
 ### Functions ###
 #################
 
-def convertir(piece:Piece, new_type_piece:str) -> Piece:
+###########################
+###### Sub functions ######
+###########################
+
+def convert(piece:Piece, new_type_piece:str) -> Piece:
+
+    """
+    This function is called when a pawn arrives at the edge of the board
+    
+    piece : Promoted pawn
+    new_type_piece : a string entered by the player to choose which piece this pawn will become
+    """
 
     dic_pieces = {
         Piece.NIGHT: Night,
@@ -222,10 +233,31 @@ def convertir(piece:Piece, new_type_piece:str) -> Piece:
     return new_piece
 
 def initialize_pos(board:list[list]) -> None:
-        for i, row in enumerate(board):
-            for j, case in enumerate(row):
-                if isinstance(case, Piece):
-                    case._pos = Piece._index_to_pos((i,j))
+
+    """
+    This function initialize every piece's position on the board.
+    It is called right after the board's creation
+    """
+
+    for i, row in enumerate(board):
+        for j, case in enumerate(row):
+            if isinstance(case, Piece):
+                case._pos = Piece._index_to_pos((i,j))
+
+def get_king_pos(turn:str, board:list[list[Piece]]) -> str:
+
+    """
+    Return the position of the king of the indicated color on the board
+    """
+
+    for row in board:
+        for case in row:
+            if isinstance(case,King) and case._color == turn:
+                return case._pos
+
+############################
+###### Main functions ######
+############################
 
 def possible_moves(board:list[list], turn:str) -> tuple[list[Move],list[Move]]:
 
@@ -255,12 +287,6 @@ def possible_moves(board:list[list], turn:str) -> tuple[list[Move],list[Move]]:
                         
         return psb_mv_player, psb_mv_holder
 
-def get_king_pos(turn:str, board:list[list[Piece]]) -> str:
-    for row in board:
-        for case in row:
-            if isinstance(case,King) and case._color == turn:
-                return case._pos
-
 def is_check(king_pos:str, holder_moves:list[Move]) -> bool:
 
     # Return if the current player is in check state
@@ -273,7 +299,7 @@ def is_check(king_pos:str, holder_moves:list[Move]) -> bool:
     return check
 
 
-def is_check_mate(board:list[list[str or Piece]], player_moves:list[Move], game_info:dict) -> tuple[bool,list[bool]]:
+def is_check_mate(board:list[list[str or Piece]], player_moves:list[Move]) -> tuple[bool,list[bool]]:
     
     # Return if the current player is in check_state
 
@@ -285,7 +311,7 @@ def is_check_mate(board:list[list[str or Piece]], player_moves:list[Move], game_
         rea_move = copy.deepcopy(pl_mv)
         move(rea_move, next_move_board, {'turn':pl_mv.piece._color})
         king_pos = get_king_pos(pl_mv.piece._color, next_move_board)
-        psb_mv, hld_mv = possible_moves(next_move_board, pl_mv.piece._color)
+        hld_mv = possible_moves(next_move_board, pl_mv.piece._color)[1]
         # lst_check.append(is_check(king_pos, hld_mv))
         if is_check(king_pos, hld_mv):
             lst_check.append(pl_mv)
@@ -358,7 +384,7 @@ def move(move:Move, board:list[list[str or Piece]], game_info:dict) -> None:
             if move.upgrade:
                 print('\nNew type of piece : (n, b, r, q)')
                 ask_new = input()
-                board[fto[0]][fto[1]] = convertir(move.piece, ask_new)
+                board[fto[0]][fto[1]] = convert(move.piece, ask_new)
             else:
                 board[fto[0]][fto[1]] = move.piece
 
@@ -448,15 +474,15 @@ def main():
     psb_mv, hd_mv = possible_moves(game_board, game_info['turn'])
     king_pos = get_king_pos(game_info['turn'], game_board)
     game_info['check'] = is_check(king_pos, hd_mv)
-    game_info['check_mate'] = is_check_mate(game_board, psb_mv, game_info)
+    game_info['check_mate'] = is_check_mate(game_board, psb_mv)
 
     ### Mainloop ###
     while not game_info['check_mate']:
 
         show(game_board, game_info)
 
-        print('')
-        for mv in psb_mv: print(mv)
+        # print('')
+        # for mv in psb_mv: print(mv)
 
         _from, to = ask_move()
         rea_move = find_move(_from, to, psb_mv)
@@ -465,23 +491,10 @@ def main():
         psb_mv, hd_mv = possible_moves(game_board, game_info['turn'])
         king_pos = get_king_pos(game_info['turn'], game_board)
         game_info['check'] = is_check(king_pos, hd_mv)
-        game_info['check_mate'] = is_check_mate(game_board, psb_mv, game_info)
+        game_info['check_mate'] = is_check_mate(game_board, psb_mv)
 
     ### Show final position and winner ###
     show(game_board, game_info)
 
-#################
-### Unit test ###
-#################
-
-import unittest as ut
-
-class ChessTestCase(ut.TestCase):
-
-    def test_rook(self):
-        res = 'rook'
-        self.assertEqual('rook',res)
-
 if __name__ == '__main__':
     main()
-    # ut.main()
