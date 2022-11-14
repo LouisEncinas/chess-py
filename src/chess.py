@@ -155,7 +155,7 @@ class King(FiniteMovementPiece):
         if self.not_moved:
             for dir in dirs:
                 new_index = add(index,dir)
-                while -1 < new_index[1] < 8 and board[new_index[0]][new_index[1]] == _EMPTY_CASE:
+                while 0 < new_index[1] < 7 and board[new_index[0]][new_index[1]] == _EMPTY_CASE:
                     new_index = add(new_index,dir)
                 look_case = board[new_index[0]][new_index[1]]
                 if isinstance(look_case, Rook) and look_case.not_moved:
@@ -255,19 +255,19 @@ def possible_moves(board:list[list], turn:str) -> tuple[list[Move],list[Move]]:
                         
         return psb_mv_player, psb_mv_holder
 
-def is_check(player_moves:list[Move], holder_moves:list[Move]) -> bool:
+def get_king_pos(turn:str, board:list[list[Piece]]) -> str:
+    for row in board:
+        for case in row:
+            if isinstance(case,King) and case._color == turn:
+                return case._pos
+
+def is_check(king_pos:str, holder_moves:list[Move]) -> bool:
 
     # Return if the current player is in check state
-    pos = ''
-
     check = False
-    for pl_mv in player_moves:
-        if isinstance(pl_mv.piece, King):
-            pos = pl_mv.piece._pos
-            break
 
     for hd_mv in holder_moves:
-        if hd_mv.to == pos and hd_mv.pot_threat:
+        if hd_mv.to == king_pos and hd_mv.pot_threat:
             check = True
 
     return check
@@ -279,20 +279,22 @@ def is_check_mate(board:list[list[str or Piece]], player_moves:list[Move], game_
 
     check_mate = False
 
-    if not game_info['check']:
-        return check_mate
-    else:
-        lst_check = []
-        for pl_mv in player_moves:
-            next_move_board = copy.deepcopy(board)
-            rea_move = copy.deepcopy(pl_mv)
-            move(rea_move, next_move_board, {'turn':pl_mv.piece._color})
-            psb_mv, hld_mv = possible_moves(next_move_board, pl_mv.piece._color)
-            lst_check.append(is_check(psb_mv, hld_mv))
-            # lst_check.append(f'{pl_mv.piece} : {pl_mv._from}->{pl_mv.to} :: {is_check(psb_mv, hld_mv)}')
+    lst_check = []
+    for pl_mv in player_moves:
+        next_move_board = copy.deepcopy(board)
+        rea_move = copy.deepcopy(pl_mv)
+        move(rea_move, next_move_board, {'turn':pl_mv.piece._color})
+        king_pos = get_king_pos(pl_mv.piece._color, next_move_board)
+        psb_mv, hld_mv = possible_moves(next_move_board, pl_mv.piece._color)
+        # lst_check.append(is_check(king_pos, hld_mv))
+        if is_check(king_pos, hld_mv):
+            lst_check.append(pl_mv)
+        # lst_check.append(f'{pl_mv.piece} : {pl_mv._from}->{pl_mv.to} :: {is_check(psb_mv, hld_mv)}')
         
-        check_mate = all(lst_check)
-        return check_mate
+    for mv in lst_check: player_moves.remove(mv)  
+    # check_mate = all(lst_check)
+    
+    return player_moves == []
 
 
 def show_board(board:list[list[str or Piece]]):
@@ -409,14 +411,23 @@ _INIT_BOARD = [[Rook(Piece.BLACK),Night(Piece.BLACK),Bishop(Piece.BLACK),Queen(P
             [Pawn(Piece.WHITE) for _ in range(8)],
             [Rook(Piece.WHITE),Night(Piece.WHITE),Bishop(Piece.WHITE),Queen(Piece.WHITE),King(Piece.WHITE),Bishop(Piece.WHITE),Night(Piece.WHITE),Rook(Piece.WHITE)]]
 
-_TEST = [[Rook(Piece.BLACK),Night(Piece.BLACK),Bishop(Piece.BLACK),Queen(Piece.BLACK),King(Piece.BLACK),Bishop(Piece.BLACK),Night(Piece.BLACK),Rook(Piece.BLACK)],
+_TEST_CHECKMATE = [[Rook(Piece.BLACK),Night(Piece.BLACK),Bishop(Piece.BLACK),Queen(Piece.BLACK),King(Piece.BLACK),_EMPTY_CASE,Night(Piece.BLACK),Rook(Piece.BLACK)],
             [Pawn(Piece.BLACK) for _ in range(8)],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Bishop(Piece.BLACK)],
             [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
             [_EMPTY_CASE,_EMPTY_CASE,Bishop(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
             [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Queen(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE],
             [Pawn(Piece.WHITE) for _ in range(8)],
             [Rook(Piece.WHITE),Night(Piece.WHITE),Bishop(Piece.WHITE),_EMPTY_CASE,King(Piece.WHITE),_EMPTY_CASE,Night(Piece.WHITE),Rook(Piece.WHITE)]]
+
+_TEST_PIN = [[_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,King(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Rook(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Queen(Piece.BLACK),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE]]
 
 ############
 ### main ###
@@ -435,18 +446,25 @@ def main():
 
     ### Possible moves ###
     psb_mv, hd_mv = possible_moves(game_board, game_info['turn'])
+    king_pos = get_king_pos(game_info['turn'], game_board)
+    game_info['check'] = is_check(king_pos, hd_mv)
+    game_info['check_mate'] = is_check_mate(game_board, psb_mv, game_info)
 
     ### Mainloop ###
     while not game_info['check_mate']:
 
         show(game_board, game_info)
 
+        print('')
+        for mv in psb_mv: print(mv)
+
         _from, to = ask_move()
         rea_move = find_move(_from, to, psb_mv)
         move(rea_move, game_board, game_info)
 
         psb_mv, hd_mv = possible_moves(game_board, game_info['turn'])
-        game_info['check'] = is_check(psb_mv, hd_mv)
+        king_pos = get_king_pos(game_info['turn'], game_board)
+        game_info['check'] = is_check(king_pos, hd_mv)
         game_info['check_mate'] = is_check_mate(game_board, psb_mv, game_info)
 
     ### Show final position and winner ###
