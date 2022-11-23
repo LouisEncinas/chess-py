@@ -111,7 +111,8 @@ class Pawn(Piece):
             if (-1 < arrival_index[0] < 8 and -1 < arrival_index[1] < 8):
                 look_case = board[look_index[0]][look_index[1]]
                 arrival_case = board[arrival_index[0]][arrival_index[1]]
-                if self._pos[1] == '5' and isinstance(look_case, Pawn) and look_case._color != self._color and len(look_case.moves) == 1:
+                if self._pos[1] in ['4','5'] and isinstance(look_case, Pawn) and look_case._color != self._color and len(look_case.moves) == 1:
+                    # Mouvement en passant à corriger -> Si le pion ne prend pas en passant directement après le mouvement du pion ennemi, il ne pourra plus prendre en passant
                     psb_mv.append(Move(Piece._index_to_pos(index), Piece._index_to_pos(arrival_index), self, upgrade=upgrade, take=True, en_passant=True))
 
         return psb_mv
@@ -481,8 +482,8 @@ def main():
 
         show(game_board, game_info)
 
-        # print('')
-        # for mv in psb_mv: print(mv)
+        print('')
+        for mv in psb_mv: print(mv)
 
         _from, to = ask_move()
         rea_move = find_move(_from, to, psb_mv)
