@@ -4,22 +4,23 @@ import math
 
 WIDTH = 600
 HEIGHT = 480
+P4 = math.pi/4
 
 class Vector2D:
 
     def __init__(self, tpl:tuple[int,int]) -> None:
+        self.tuple = tpl
         self.x = tpl[0]
         self.y = tpl[1]
 
-    def getTuple(self) -> tuple[int,int]:
-        return tuple((self.x, self.y))
+    def __str__(self) -> str:
+        return f'({self.x}, {self.y})'
 
 class Circle:
 
     def __init__(self, center:Vector2D, radius:int) -> None:
         self.center = center
         self.radius = radius
-
         self.left = self.center.x - self.radius
         self.right = self.center.x + self.radius
         self.bottom = self.center.y - self.radius
@@ -28,9 +29,13 @@ class Circle:
     def move(self, tpl:tuple[int,int]):
         self.center.x += tpl[0]
         self.center.y += tpl[1]
+        self.left = self.center.x - self.radius
+        self.right = self.center.x + self.radius
+        self.bottom = self.center.y - self.radius
+        self.top = self.center.y + self.radius
 
     def getCenter(self) -> tuple[int,int]:
-        return tuple((self.center.x, self.center.y))
+        return self.center.tuple
 
 class Collision:
 
@@ -39,7 +44,6 @@ class Collision:
     BOTTOM = 'bottom'
     LEFT = 'left'
     RIGHT = 'right'
-
     LIST = [RIGHT, LEFT, BOTTOM, TOP]
 
 pygame.init()
@@ -62,14 +66,20 @@ def collide_rect_rect(r1:pygame.Rect, r2:pygame.Rect):
         return Collision.LIST[index]
     return Collision.NONE
 
-def collide_circle_rect(screen, c:Circle, r:pygame.Rect):
-    x_comp = c.center.x - r.center[0]
-    y_comp = c.center.y - r.center[1]
-    theta = math.atan2(y_comp, x_comp)
+def collide_circle_rect(c:Circle, r:pygame.Rect):
+    theta = math.atan2(c.center.y - r.center[1], c.center.x - r.center[0])
     point = Vector2D((c.center.x - math.cos(theta) * c.radius, c.center.y - math.sin(theta) * c.radius))
-    pygame.draw.line(screen, (0,255,0), r.center, c.getCenter())
-    pygame.draw.line(screen, (255,0,0), c.getCenter(), point.getTuple())
-
+    if (r.left <= point.x <= r.right) and (r.top <= point.y <= r.bottom):
+        if P4 < theta < 3*P4:
+            return Collision.BOTTOM 
+        elif -P4 < theta < P4:
+            return Collision.RIGHT
+        elif -3*P4 < theta < -P4:
+            return Collision.TOP
+        else:
+            return Collision.LEFT
+    return Collision.NONE
+        
 while True:
     
     for event in pygame.event.get():
@@ -82,17 +92,16 @@ while True:
         speed[0] = -speed[0]
     if img_rect.top < 0 or img_rect.bottom > HEIGHT:
         speed[1] = -speed[1]
-    # collision = collide(img_rect, obstacle)
-    # if collision != Collision.NONE:
-    #     if collision == Collision.LEFT or collision == Collision.RIGHT:
-    #         speed[0] = -speed[0]
-    #     if collision == Collision.TOP or collision == Collision.BOTTOM:
-    #         speed[1] = -speed[1]
+    collision = collide_circle_rect(img_circle, obstacle)
+    if collision != Collision.NONE:
+        if collision == Collision.LEFT or collision == Collision.RIGHT:
+            speed[0] = -speed[0]
+        if collision == Collision.TOP or collision == Collision.BOTTOM:
+            speed[1] = -speed[1]
 
     clock.tick(60)
     screen.fill((0,0,0))
     screen.blit(img, img_rect)
-    collide_circle_rect(screen, img_circle, obstacle)
     pygame.draw.rect(screen, (0,0,255), obstacle)
 
     pygame.display.update()
