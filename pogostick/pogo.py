@@ -7,8 +7,7 @@ SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 PLAYER_WIDTH = 40
 PLAYER_HEIGHT = 60
-POGO_WIDTH = 10
-POGO_HEIGHT = 80
+POGO_LENGTH = 80
 
 class Vector2D:
 
@@ -23,6 +22,9 @@ class Vector2D:
 
     def __neg__(self):
         return Vector2D((-self.x,-self.y))
+
+    def __add__(self, vec):
+        return Vector2D((self.x + vec.x, self.y + vec.y))
 
 class Circle:
 
@@ -42,8 +44,46 @@ class Circle:
         self.bottom = self.center.y - self.radius
         self.top = self.center.y + self.radius
 
-    def getCenter(self) -> tuple[int,int]:
-        return self.center.tuple
+class Block:
+
+    def __init__(self, position:Vector2D, size:Vector2D) -> None:
+        self.hitbox:pygame.Rect = pygame.Rect(position.x, position.y, size.x, size.y)
+        self.color = (0,100,0)
+        self.colideable = True
+        self.under_gravity = False
+
+    def draw(self, screen):
+        pygame.draw.rect(screen, self.color, self.hitbox)
+
+class Player:
+
+    def __init__(self, position:Vector2D) -> None:
+        self.body:pygame.Rect = pygame.Rect(position.x, position.y, PLAYER_WIDTH, PLAYER_HEIGHT)
+        self.pogo_point:Vector2D = Vector2D((position.x + PLAYER_WIDTH/2, position.y + PLAYER_HEIGHT/2 + POGO_LENGTH))
+        self.body_color = (240,235,210)
+        self.pogo_color = (121, 19, 48)
+        self.colideable = True
+        self.under_gravity = True
+        self.speed = Vector2D((0,0))
+
+    def update(self, delta_time, gravity):
+        self.speed.y += delta_time*gravity
+        self.move(self.speed)
+
+    def move(self, vec:Vector2D):
+        self.body = self.body.move(vec.x, vec.y)
+        self.pogo_point = self.pogo_point + vec
+        # move doesn't change body pos
+        # move pogo point
+
+    def collide(self, lst:list[pygame.Rect]):
+        for hitbox in lst:
+            if hitbox.left < self.pogo_point.x < hitbox.right and hitbox.top < self.pogo_point.y < hitbox.bottom:
+                pass
+
+    def draw(self, screen):
+        pygame.draw.rect(screen, self.body_color, self.body)
+        pygame.draw.line(screen, self.pogo_color, self.body.center, self.pogo_point.tuple)
 
 class Collision:
 
@@ -76,21 +116,11 @@ def collide_circle_rect(c:Circle, r:pygame.Rect) -> tuple[str,Vector2D]:
 
 pygame.init()
 clock = pygame.time.Clock()
+frame_rate = 60
+delta_time = 1/frame_rate
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-img = pygame.image.load('img/louisboy.png').convert()
-img = pygame.transform.scale(img, (SCREEN_HEIGHT*.1,SCREEN_HEIGHT*.1))
-speed = [2,2]
-img_rect = img.get_rect()
-img_rect.y += 10
-img_circle = Circle(Vector2D(img_rect.center), img_rect.size[0]/2)
-
-OBS_WIDTH = 100
-OBS_HEIGHT = 100
-obstacle = pygame.Rect((SCREEN_WIDTH - OBS_WIDTH)/2, (SCREEN_HEIGHT - OBS_HEIGHT)/2, OBS_WIDTH, OBS_HEIGHT)
-
-invicible_frame = 0
-invicible = False
-lst_collisions:list[Circle] = []
+player = Player(position=Vector2D(((SCREEN_WIDTH - PLAYER_WIDTH)/2, (SCREEN_HEIGHT - PLAYER_HEIGHT)/2)))
+floor = Block(Vector2D((0,SCREEN_HEIGHT - 100)), Vector2D((SCREEN_WIDTH, 100)))
         
 while True:
 
@@ -98,37 +128,11 @@ while True:
         if event.type == pygame.QUIT:
             sys.exit()
 
-    img_rect = img_rect.move(speed)
-    img_circle.move(speed)
-    if img_rect.left < 0 or img_rect.right > SCREEN_WIDTH:
-        speed[0] = -speed[0]
-    if img_rect.top < 0 or img_rect.bottom > SCREEN_HEIGHT:
-        speed[1] = -speed[1]
+    player.update(delta_time, 10)
 
-    collision, collision_point = collide_circle_rect(img_circle, obstacle)
-    if collision != Collision.NONE and not invicible:
-        invicible = True
-        lst_collisions.append(Circle(Vector2D(collision_point.tuple), 5))
-        if collision == Collision.LEFT or collision == Collision.RIGHT:
-            speed[0] = -speed[0]
-        if collision == Collision.TOP or collision == Collision.BOTTOM:
-            speed[1] = -speed[1]
-        if collision == Collision.OTHER:
-            speed[0] = -speed[0]
-            speed[1] = -speed[1]
-
-    if invicible:
-        if invicible_frame < 10:
-            invicible_frame += 1
-        else:
-            invicible = False
-            invicible_frame = 0
-
-    clock.tick(60)
+    clock.tick(frame_rate)
     screen.fill((0,0,0))
-    screen.blit(img, img_rect)
-    pygame.draw.rect(screen, (0,0,255), obstacle)
-    for collision in lst_collisions:
-        pygame.draw.circle(screen, (255,0,0), collision.center.tuple, collision.radius)
+    player.draw(screen)
+    floor.draw(screen)
 
     pygame.display.update()
