@@ -66,15 +66,23 @@ class Player:
         self.under_gravity = True
         self.speed = Vector2D((0,0))
 
-    def update(self, delta_time, gravity):
-        self.speed.y += delta_time*gravity
+    def update(self, delta_time, gravity, lst):
+        collision = self.pogo_collide(lst)
+        if collision == Collision.NONE:
+            self.speed.y += delta_time*gravity
+        else:
+            self.speed.y = -gravity
         self.move(self.speed)
 
     def move(self, vec:Vector2D):
         self.body = self.body.move(vec.x, vec.y)
-        self.pogo_point = self.pogo_point + vec
-        # move doesn't change body pos
-        # move pogo point
+        self.pogo_point = Vector2D((self.body.center[0], self.body.center[1] + POGO_LENGTH))
+
+    def pogo_collide(self, lst:list[pygame.Rect]):
+        for hitbox in lst:
+            collision = point_in_rect(self.pogo_point, hitbox)
+            if collision != Collision.NONE : return collision
+        return Collision.NONE
 
     def collide(self, lst:list[pygame.Rect]):
         for hitbox in lst:
@@ -84,6 +92,7 @@ class Player:
     def draw(self, screen):
         pygame.draw.rect(screen, self.body_color, self.body)
         pygame.draw.line(screen, self.pogo_color, self.body.center, self.pogo_point.tuple)
+        print(self.pogo_point.tuple[1], self.body.center[1])
 
 class Collision:
 
@@ -114,6 +123,12 @@ def collide_circle_rect(c:Circle, r:pygame.Rect) -> tuple[str,Vector2D]:
         return Collision.LIST[lst.index(min(lst))], point
     return Collision.NONE, point
 
+def point_in_rect(point:Vector2D, r:pygame.Rect):
+    if (r.left <= point.x <= r.right) and (r.top <= point.y <= r.bottom):
+        lst = [abs(r.right - point.x), abs(r.left - point.x), abs(r.bottom - point.y), abs(r.top - point.y)]
+        return Collision.LIST[lst.index(min(lst))]
+    return Collision.NONE
+
 pygame.init()
 clock = pygame.time.Clock()
 frame_rate = 60
@@ -128,7 +143,7 @@ while True:
         if event.type == pygame.QUIT:
             sys.exit()
 
-    player.update(delta_time, 10)
+    player.update(delta_time, 10, [floor.hitbox])
 
     clock.tick(frame_rate)
     screen.fill((0,0,0))
