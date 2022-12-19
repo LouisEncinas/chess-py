@@ -92,7 +92,6 @@ class Player:
     def draw(self, screen):
         pygame.draw.rect(screen, self.body_color, self.body)
         pygame.draw.line(screen, self.pogo_color, self.body.center, self.pogo_point.tuple)
-        print(self.pogo_point.tuple[1], self.body.center[1])
 
 class Collision:
 
