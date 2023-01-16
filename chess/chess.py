@@ -1,6 +1,6 @@
 import os
+import re
 from termcolor import cprint
-from time import sleep
 import copy
 
 """
@@ -303,9 +303,6 @@ def is_check(king_pos:str, holder_moves:list[Move]) -> bool:
 def is_check_mate(board:list[list[str or Piece]], player_moves:list[Move]) -> tuple[bool,list[bool]]:
     
     # Return if the current player is in check_state
-
-    check_mate = False
-
     lst_check = []
     for pl_mv in player_moves:
         next_move_board = copy.deepcopy(board)
@@ -322,7 +319,6 @@ def is_check_mate(board:list[list[str or Piece]], player_moves:list[Move]) -> tu
     # check_mate = all(lst_check)
     
     return player_moves == []
-
 
 def show_board(board:list[list[str or Piece]]):
 
@@ -359,10 +355,11 @@ def show(board:list[list[str or Piece]], game_info:dict) -> None:
         cprint(ccm_string, col, end='\n')
 
 def ask_move() -> tuple[str, str]:
-    ipt = input('\nNext move ("form to" format) : ')
-    if ipt:
-        _from, to = tuple(ipt.split(' '))
-    return _from, to
+    ipt = input('\nNext move ("from to" format, ex: "e2 e4") : ')
+    pattern = re.compile('^[a-h][1-8] [a-h][1-8]$')
+    if not pattern.match(ipt):
+        return ('z9','z9') # return un move impossible (pas dans la liste) pour que ça reset l'affichage
+    return tuple(ipt.split(' '))
 
 def find_move(_from:str, to:str, lst_mv:list[Move]) -> Move:
     save_move = None
@@ -374,6 +371,7 @@ def find_move(_from:str, to:str, lst_mv:list[Move]) -> Move:
 def move(move:Move, board:list[list[str or Piece]], game_info:dict) -> None:
 
         if move is not None:
+
             move.piece.moves.append(move)
 
             findex = Piece._pos_to_index(move._from)
@@ -482,7 +480,7 @@ def main():
 
         show(game_board, game_info)
 
-        print('')
+        # print('')
         for mv in psb_mv: print(mv)
 
         _from, to = ask_move()
