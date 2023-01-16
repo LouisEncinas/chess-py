@@ -48,11 +48,12 @@ class Piece:
     WHITE = 'w'
     BLACK = 'b'
 
-    def __init__(self, id:str, color:str) -> None:
+    def __init__(self, id:str, color:str, value:int) -> None:
 
         self._id = id
         self._pos = ''
         self._color = color
+        self._value = 0
         self.not_moved = True
         self.moves:list[Move] = []
 
@@ -79,7 +80,7 @@ class Piece:
 class Pawn(Piece):
 
     def __init__(self, color: str) -> None:
-        super().__init__(Piece.PAWN, color)
+        super().__init__(Piece.PAWN, color, -1 if color == Piece.BLACK else 1)
 
     def _possible_moves(self, board:list[list]) -> list[Move]:
 
@@ -119,8 +120,8 @@ class Pawn(Piece):
 
 class FiniteMovementPiece(Piece):
 
-    def __init__(self, id: str, color: str) -> None:
-        super().__init__(id, color)
+    def __init__(self, id: str, color: str, value:int) -> None:
+        super().__init__(id, color, value)
         self.movements:list[tuple] = []
 
     def _possible_moves(self, board: list[list]) -> list[Move]:
@@ -139,13 +140,13 @@ class FiniteMovementPiece(Piece):
 class Night(FiniteMovementPiece):
 
     def __init__(self, color:str) -> None:
-        super().__init__(Piece.NIGHT, color)
+        super().__init__(Piece.NIGHT, color, -3 if color == Piece.BLACK else 3)
         self.movements = [(2,-1),(2,1),(1,2),(-1,2),(-2,1),(-2,-1),(-1,-2),(1,-2)]
 
 class King(FiniteMovementPiece):
     
     def __init__(self, color: str) -> None:
-        super().__init__(Piece.KING, color)
+        super().__init__(Piece.KING, color, -500 if color == Piece.BLACK else 500)
         self.movements = [(1,1),(-1,1),(-1,-1),(1,-1),(0,1),(0,-1),(1,0),(-1,0)]
 
     def _possible_moves(self, board: list[list]) -> list[Move]:
@@ -166,8 +167,8 @@ class King(FiniteMovementPiece):
 
 class InfiniteMovementPiece(Piece):
 
-    def __init__(self, id: str, color: str) -> None:
-        super().__init__(id, color)
+    def __init__(self, id: str, color: str, value:int) -> None:
+        super().__init__(id, color, value)
         self.directions:list[tuple] = []
 
     def _possible_moves(self, board: list[list]) -> list[Move]:
@@ -186,19 +187,19 @@ class InfiniteMovementPiece(Piece):
 class Bishop(InfiniteMovementPiece):
 
     def __init__(self, color:str) -> None:
-        super().__init__(Piece.BISHOP, color)
+        super().__init__(Piece.BISHOP, color, -3 if color == Piece.BLACK else 3)
         self.directions = [(1,1),(-1,1),(-1,-1),(1,-1)]
 
 class Rook(InfiniteMovementPiece):
 
     def __init__(self, color: str) -> None:
-        super().__init__(Piece.ROOK, color)
+        super().__init__(Piece.ROOK, color, -5 if color == Piece.BLACK else 5)
         self.directions = [(0,1),(0,-1),(1,0),(-1,0)]
 
 class Queen(InfiniteMovementPiece):
 
     def __init__(self, color: str) -> None:
-        super().__init__(Piece.QUEEN, color)
+        super().__init__(Piece.QUEEN, color, -9 if color == Piece.BLACK else 9)
         self.directions = [(1,1),(-1,1),(-1,-1),(1,-1),(0,1),(0,-1),(1,0),(-1,0)]
 
 #################
@@ -402,6 +403,29 @@ def move(move:Move, board:list[list[str or Piece]], game_info:dict) -> None:
 
             game_info['turn'] = Piece.BLACK if move.piece._color == Piece.WHITE else Piece.WHITE
 
+##################################
+###### Evuluation functions ######
+##################################
+
+def get_score_from_board(board:list[list[Piece|str]], psb_mv:list[Move], game_info:dict) -> int:
+
+    score = 0
+    score_per_piece = {
+        Piece.PAWN: 1,
+        Piece.NIGHT: 3,
+        Piece.BISHOP: 3,
+        Piece.ROOK: 5,
+        Piece.QUEEN: 9,
+        Piece.KING: 20
+    }
+
+    for row in board:
+        for case in row:
+            if case != _EMPTY_CASE and case._color == game_info['turn']:
+                score += score_per_piece[case._id] * 10
+
+    return score + len(psb_mv)
+
 #######################
 ### Other functions ###
 #######################
@@ -481,7 +505,8 @@ def main():
         show(game_board, game_info)
 
         # print('')
-        for mv in psb_mv: print(mv)
+        # for mv in psb_mv: print(mv)
+        print(get_score_from_board(game_board, psb_mv, game_info))
 
         _from, to = ask_move()
         rea_move = find_move(_from, to, psb_mv)
