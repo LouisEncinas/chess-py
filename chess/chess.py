@@ -29,7 +29,7 @@ class Move:
         tk = 'x' if self.take else ''
         up = '(up)' if self.upgrade else ''
         ro = '(rook)' if self.rook else ''
-        return f'{self.piece} : {self._from}->{tk}{self.to} {up}{ro}'
+        return f'{self.piece} : {self._from}->{tk}{self.to}{up}{ro}'
 
 
 class Piece:
@@ -382,8 +382,9 @@ def move(move:Move, board:list[list[str or Piece]], game_info:dict) -> None:
             if move.piece.not_moved: move.piece.not_moved = False
 
             if move.upgrade:
-                print('\nNew type of piece : (n, b, r, q)')
-                ask_new = input()
+                # print('\nNew type of piece : (n, b, r, q)')
+                # ask_new = input()
+                ask_new = 'q'
                 board[fto[0]][fto[1]] = convert(move.piece, ask_new)
             else:
                 board[fto[0]][fto[1]] = move.piece
@@ -407,7 +408,7 @@ def move(move:Move, board:list[list[str or Piece]], game_info:dict) -> None:
 ###### Evuluation functions ######
 ##################################
 
-def get_score_from_board(board:list[list[Piece|str]], psb_mv:list[Move], game_info:dict) -> int:
+def get_score_from_board(board:list[list[Piece|str]], psb_mv:list[Move], hd_mv:list[Move], game_info:dict) -> int:
 
     score = 0
     score_per_piece = {
@@ -421,10 +422,33 @@ def get_score_from_board(board:list[list[Piece|str]], psb_mv:list[Move], game_in
 
     for row in board:
         for case in row:
-            if case != _EMPTY_CASE and case._color == game_info['turn']:
-                score += score_per_piece[case._id] * 10
+            if case != _EMPTY_CASE:
+                if case._color == Piece.WHITE:
+                    score += score_per_piece[case._id] * 10
+                else:
+                    score -= score_per_piece[case._id] * 10
+            
+    if game_info['turn'] == Piece.WHITE:
+        score = score + len(psb_mv) - len(hd_mv)
+    else:
+        score = score - len(psb_mv) + len(hd_mv)
 
-    return score + len(psb_mv)
+    return score
+
+def min_max(board:list[list[Piece|str]], psb_mv:list[Move], hd_mv:list[Move], game_info:dict):
+
+    for mv in psb_mv:
+        
+        next_gi = copy.deepcopy(game_info)
+        next_board = copy.deepcopy(board)
+        rea_mv = copy.deepcopy(mv)
+        move(rea_mv, next_board, next_gi)
+
+        pm, hm = possible_moves(next_board, next_gi['turn'])
+        next_gi['check_mate'] = is_check_mate(next_board, pm)
+
+        print(f"Score after {mv} -> {get_score_from_board(next_board, pm, hm, next_gi)}")
+
 
 #######################
 ### Other functions ###
@@ -478,6 +502,15 @@ _TEST_PIN = [[_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,King(Piece.WHITE),_EMPTY_CASE,
             [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
             [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Queen(Piece.BLACK),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE]]
 
+_TEST_SCORE = [[_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Night(Piece.BLACK),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [Pawn(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE]]
+
 ############
 ### main ###
 ############
@@ -506,7 +539,8 @@ def main():
 
         # print('')
         # for mv in psb_mv: print(mv)
-        print(get_score_from_board(game_board, psb_mv, game_info))
+        print(f"Current board score : {get_score_from_board(game_board, psb_mv, hd_mv, game_info)}\n")
+        min_max(game_board, psb_mv, hd_mv, game_info)
 
         _from, to = ask_move()
         rea_move = find_move(_from, to, psb_mv)
