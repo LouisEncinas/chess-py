@@ -1,11 +1,9 @@
 import os
 import re
-from termcolor import cprint
 import copy
-
-"""
-All moves that do not need to know other pieces moves in the pieces class
-"""
+import time as tempo
+import anytree as at
+from termcolor import cprint
 
 ###############
 ### Classes ###
@@ -408,7 +406,7 @@ def move(move:Move, board:list[list[str or Piece]], game_info:dict) -> None:
 ###### Evuluation functions ######
 ##################################
 
-def get_score_from_board(board:list[list[Piece|str]], psb_mv:list[Move], hd_mv:list[Move], game_info:dict) -> int:
+def get_score_from_board(board:list[list[Piece|str]], psb_mv:list[Move], hd_mv:list[Move], turn:str) -> int:
 
     score = 0
     score_per_piece = {
@@ -428,27 +426,50 @@ def get_score_from_board(board:list[list[Piece|str]], psb_mv:list[Move], hd_mv:l
                 else:
                     score -= score_per_piece[case._id] * 10
             
-    if game_info['turn'] == Piece.WHITE:
+    if turn == Piece.WHITE:
         score = score + len(psb_mv) - len(hd_mv)
     else:
         score = score - len(psb_mv) + len(hd_mv)
 
     return score
 
-def min_max(board:list[list[Piece|str]], psb_mv:list[Move], hd_mv:list[Move], game_info:dict):
+def define_tree(
+    board:list[list[Piece|str]], psb_mv:list[Move], game_info:dict,
+    root:at.Node=None, depth=1):
 
-    for mv in psb_mv:
-        
+    # Définition de la racine de l'arbre si aucun noeud n'a été passé
+    if root is None:
+        root = at.Node('root')
+
+    for index, mv in enumerate(psb_mv):
+
         next_gi = copy.deepcopy(game_info)
         next_board = copy.deepcopy(board)
         rea_mv = copy.deepcopy(mv)
         move(rea_mv, next_board, next_gi)
-
         pm, hm = possible_moves(next_board, next_gi['turn'])
         next_gi['check_mate'] = is_check_mate(next_board, pm)
 
-        print(f"Score after {mv} -> {get_score_from_board(next_board, pm, hm, next_gi)}")
+        if depth:
+            node = at.Node(f'm{index}', parent=root, move=mv)
+            define_tree(next_board, pm, next_gi, node, depth=depth-1)
+        else:
+            node = at.Node(f'm{index}', parent=root, move=mv, score=get_score_from_board(next_board, pm, hm, next_gi['turn']))
 
+    if depth == 1: return root
+
+def min_max(board:list[list[Piece|str]], psb_mv:list[Move], game_info:dict):
+
+    tree = define_tree(board, psb_mv, game_info)
+
+    if game_info['turn'] == Piece.WHITE:
+        for fl in tree.children:
+            fl.score = min(fl.children, key=lambda l:l.score).score
+        return max(tree.children, key=lambda l:l.score).move
+    else:
+        for fl in tree.children:
+            fl.score = min(fl.children, key=lambda l:-l.score).score
+        return max(tree.children, key=lambda l:-l.score).move
 
 #######################
 ### Other functions ###
@@ -539,8 +560,8 @@ def main():
 
         # print('')
         # for mv in psb_mv: print(mv)
-        print(f"Current board score : {get_score_from_board(game_board, psb_mv, hd_mv, game_info)}\n")
-        min_max(game_board, psb_mv, hd_mv, game_info)
+        print(f"Current board score : {get_score_from_board(game_board, psb_mv, hd_mv, game_info['turn'])}\n")
+        print(f"Best move : {min_max(game_board, psb_mv, game_info)}")
 
         _from, to = ask_move()
         rea_move = find_move(_from, to, psb_mv)
