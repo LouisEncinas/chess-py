@@ -1,7 +1,7 @@
 import os
 import re
 import copy
-import time as tempo
+import numpy as np
 import anytree as at
 from termcolor import cprint
 
@@ -11,7 +11,7 @@ from termcolor import cprint
 
 class Move:
 
-    def __init__(self, _from:str, to:str, piece, take:bool=False, upgrade:bool=False, rook:bool=False, en_passant:bool=False, dir_rook:tuple=None, piece_rook=None, pot_threat:bool=True) -> None:
+    def __init__(self, _from:tuple, to:tuple, piece, take:bool=False, upgrade:bool=False, rook:bool=False, en_passant:bool=False, dir_rook:tuple=None, piece_rook=None, pot_threat:bool=True) -> None:
         self.piece:Piece = piece
         self._from = _from
         self.to = to
@@ -27,7 +27,7 @@ class Move:
         tk = 'x' if self.take else ''
         up = '(up)' if self.upgrade else ''
         ro = '(rook)' if self.rook else ''
-        return f'{self.piece} : {self._from}->{tk}{self.to}{up}{ro}'
+        return f'{self.piece} : {Piece._index_to_pos(self._from)}->{tk}{Piece._index_to_pos(self.to)}{up}{ro}'
 
 
 class Piece:
@@ -46,12 +46,11 @@ class Piece:
     WHITE = 'w'
     BLACK = 'b'
 
-    def __init__(self, id:str, color:str, value:int) -> None:
+    def __init__(self, id:str, color:str) -> None:
 
         self._id = id
-        self._pos = ''
+        self._pos = ()
         self._color = color
-        self._value = 0
         self.not_moved = True
         self.moves:list[Move] = []
 
@@ -78,13 +77,13 @@ class Piece:
 class Pawn(Piece):
 
     def __init__(self, color: str) -> None:
-        super().__init__(Piece.PAWN, color, -1 if color == Piece.BLACK else 1)
+        super().__init__(Piece.PAWN, color)
+        self.dir = -1 if color == Piece.WHITE else 1
 
     def _possible_moves(self, board:list[list]) -> list[Move]:
 
         psb_mv = []
-        index = Piece._pos_to_index(self._pos)
-        self.dir = -1 if self._color == Piece.WHITE else 1
+        index = self._pos
         upgrade = True if ((self._color == Piece.WHITE and index[0] == 1) or (self._color == Piece.BLACK and index[0] == 6)) else False
         lim = 2 if self.not_moved else 1
 
@@ -93,8 +92,8 @@ class Pawn(Piece):
         ep_movements = [(0,-1),(0,1)]
 
         new_index = (index[0]+straight_movements[0],index[1]+straight_movements[1])
-        while (-1 < new_index[0] < 8 and -1 < new_index[1] < 8) and board[new_index[0]][new_index[1]] == _EMPTY_CASE and abs(new_index[0]-index[0]) <= lim:
-            psb_mv.append(Move(Piece._index_to_pos(index), Piece._index_to_pos(new_index), self, upgrade=upgrade, pot_threat=False))
+        while (-1 < new_index[0] < 8 and -1 < new_index[1] < 8) and board[new_index[0]][new_index[1]] == EMPTY_CASE and abs(new_index[0]-index[0]) <= lim:
+            psb_mv.append(Move(index, new_index, self, upgrade=upgrade, pot_threat=False))
             new_index = (new_index[0]+straight_movements[0],new_index[1]+straight_movements[1])
 
         for em in eating_movements:
@@ -102,7 +101,7 @@ class Pawn(Piece):
             if -1 < new_index[0] < 8 and -1 < new_index[1] < 8:
                 arrival_case = board[new_index[0]][new_index[1]]
                 if isinstance(arrival_case, Piece):
-                    if arrival_case._color != self._color: psb_mv.append(Move(Piece._index_to_pos(index), Piece._index_to_pos(new_index), self, take=True, upgrade=upgrade))
+                    if arrival_case._color != self._color: psb_mv.append(Move(index, new_index, self, take=True, upgrade=upgrade))
 
         for epm in ep_movements:
             look_index = (index[0]+epm[0],index[1]+epm[1])
@@ -110,94 +109,93 @@ class Pawn(Piece):
             if (-1 < arrival_index[0] < 8 and -1 < arrival_index[1] < 8):
                 look_case = board[look_index[0]][look_index[1]]
                 arrival_case = board[arrival_index[0]][arrival_index[1]]
-                if self._pos[1] in ['4','5'] and isinstance(look_case, Pawn) and look_case._color != self._color and len(look_case.moves) == 1:
+                if index[0] in [3,4] and isinstance(look_case, Pawn) and look_case._color != self._color and len(look_case.moves) == 1:
                     # Mouvement en passant à corriger -> Si le pion ne prend pas en passant directement après le mouvement du pion ennemi, il ne pourra plus prendre en passant
-                    psb_mv.append(Move(Piece._index_to_pos(index), Piece._index_to_pos(arrival_index), self, upgrade=upgrade, take=True, en_passant=True))
+                    psb_mv.append(Move(index, arrival_index, self, upgrade=upgrade, take=True, en_passant=True))
 
         return psb_mv
 
 class FiniteMovementPiece(Piece):
 
-    def __init__(self, id: str, color: str, value:int) -> None:
-        super().__init__(id, color, value)
+    def __init__(self, id: str, color: str) -> None:
+        super().__init__(id, color)
         self.movements:list[tuple] = []
 
     def _possible_moves(self, board: list[list]) -> list[Move]:
         psb_mv = []
-        index = Piece._pos_to_index(self._pos)
+        index = self._pos
         for movement in self.movements:
             new_index = (index[0]+movement[0],index[1]+movement[1])
             if -1 < new_index[0] < 8 and -1 < new_index[1] < 8:
                 arrival_case = board[new_index[0]][new_index[1]]
-                if arrival_case == _EMPTY_CASE:
-                    psb_mv.append(Move(Piece._index_to_pos(index), Piece._index_to_pos(new_index), self))
-                elif isinstance(arrival_case, Piece):
-                    if arrival_case._color != self._color: psb_mv.append(Move(Piece._index_to_pos(index), Piece._index_to_pos(new_index), self, take=True))
+                if arrival_case == EMPTY_CASE:
+                    psb_mv.append(Move(index, new_index, self))
+                elif isinstance(arrival_case, Piece) and arrival_case._color != self._color:
+                    psb_mv.append(Move(index, new_index, self, take=True))
         return psb_mv
 
 class Night(FiniteMovementPiece):
 
     def __init__(self, color:str) -> None:
-        super().__init__(Piece.NIGHT, color, -3 if color == Piece.BLACK else 3)
+        super().__init__(Piece.NIGHT, color)
         self.movements = [(2,-1),(2,1),(1,2),(-1,2),(-2,1),(-2,-1),(-1,-2),(1,-2)]
 
 class King(FiniteMovementPiece):
     
     def __init__(self, color: str) -> None:
-        super().__init__(Piece.KING, color, -500 if color == Piece.BLACK else 500)
+        super().__init__(Piece.KING, color)
         self.movements = [(1,1),(-1,1),(-1,-1),(1,-1),(0,1),(0,-1),(1,0),(-1,0)]
 
     def _possible_moves(self, board: list[list]) -> list[Move]:
         psb_mv = super()._possible_moves(board)
         # Check for rook possibilities
         dirs = [(0,1),(0,-1)]
-        index = Piece._pos_to_index(self._pos)
+        index = self._pos
         if self.not_moved:
             for dir in dirs:
                 new_index = add(index,dir)
-                while 0 < new_index[1] < 7 and board[new_index[0]][new_index[1]] == _EMPTY_CASE:
+                while 0 < new_index[1] < 7 and board[new_index[0]][new_index[1]] == EMPTY_CASE:
                     new_index = add(new_index,dir)
                 look_case = board[new_index[0]][new_index[1]]
                 if isinstance(look_case, Rook) and look_case.not_moved:
-                    psb_mv.append(Move(Piece._index_to_pos(index), Piece._index_to_pos((index[0]+2*dir[0],index[1]+2*dir[1])), self, rook=True, dir_rook=dir, piece_rook=look_case))
+                    psb_mv.append(Move(index, (index[0]+2*dir[0],index[1]+2*dir[1]), self, rook=True, dir_rook=dir, piece_rook=look_case))
         
         return psb_mv
 
 class InfiniteMovementPiece(Piece):
 
-    def __init__(self, id: str, color: str, value:int) -> None:
-        super().__init__(id, color, value)
+    def __init__(self, id: str, color: str) -> None:
+        super().__init__(id, color)
         self.directions:list[tuple] = []
 
     def _possible_moves(self, board: list[list]) -> list[Move]:
         psb_mv = []
-        index = Piece._pos_to_index(self._pos)
+        index = self._pos
         for tpl in self.directions:
             new_index = (index[0]+tpl[0],index[1]+tpl[1])
-            while -1 < new_index[0] < 8 and -1 < new_index[1] < 8 and board[new_index[0]][new_index[1]] == _EMPTY_CASE:
-                psb_mv.append(Move(Piece._index_to_pos(index), Piece._index_to_pos(new_index), self))
+            while -1 < new_index[0] < 8 and -1 < new_index[1] < 8 and board[new_index[0]][new_index[1]] == EMPTY_CASE:
+                psb_mv.append(Move(index, new_index, self))
                 new_index = (new_index[0]+tpl[0],new_index[1]+tpl[1])
-            if not self._on_edge((new_index[0]-tpl[0],new_index[1]-tpl[1])):
-                if isinstance(board[new_index[0]][new_index[1]],Piece):
-                    if board[new_index[0]][new_index[1]]._color != self._color: psb_mv.append(Move(Piece._index_to_pos(index), Piece._index_to_pos(new_index), self, take=True))
+            if not self._on_edge((new_index[0]-tpl[0],new_index[1]-tpl[1])) and isinstance(board[new_index[0]][new_index[1]], Piece) and board[new_index[0]][new_index[1]]._color != self._color:
+                psb_mv.append(Move(index, new_index, self, take=True))
         return psb_mv
 
 class Bishop(InfiniteMovementPiece):
 
     def __init__(self, color:str) -> None:
-        super().__init__(Piece.BISHOP, color, -3 if color == Piece.BLACK else 3)
+        super().__init__(Piece.BISHOP, color)
         self.directions = [(1,1),(-1,1),(-1,-1),(1,-1)]
 
 class Rook(InfiniteMovementPiece):
 
     def __init__(self, color: str) -> None:
-        super().__init__(Piece.ROOK, color, -5 if color == Piece.BLACK else 5)
+        super().__init__(Piece.ROOK, color)
         self.directions = [(0,1),(0,-1),(1,0),(-1,0)]
 
 class Queen(InfiniteMovementPiece):
 
     def __init__(self, color: str) -> None:
-        super().__init__(Piece.QUEEN, color, -9 if color == Piece.BLACK else 9)
+        super().__init__(Piece.QUEEN, color)
         self.directions = [(1,1),(-1,1),(-1,-1),(1,-1),(0,1),(0,-1),(1,0),(-1,0)]
 
 #################
@@ -242,7 +240,7 @@ def initialize_pos(board:list[list]) -> None:
     for i, row in enumerate(board):
         for j, case in enumerate(row):
             if isinstance(case, Piece):
-                case._pos = Piece._index_to_pos((i,j))
+                case._pos = (i,j)
 
 def get_king_pos(turn:str, board:list[list[Piece]]) -> str:
 
@@ -264,6 +262,7 @@ def possible_moves(board:list[list], turn:str) -> tuple[list[Move],list[Move]]:
         # Create two lists, one containing the player moves and another containing the ennemy moves
         psb_mv_player:list[Move] = []
         psb_mv_holder:list[Move] = []
+
         for row in board:
             for case in row:
                 if isinstance(case, Piece): 
@@ -275,8 +274,8 @@ def possible_moves(board:list[list], turn:str) -> tuple[list[Move],list[Move]]:
             if isinstance(mv.piece, King) and mv.rook:
                 loop_lst = psb_mv_holder if mv.piece._color == turn else psb_mv_player
                 for oth_mv in loop_lst:
-                    if ((Piece._index_to_pos((Piece._pos_to_index(mv.to)[0]-mv.dir_rook[0],Piece._pos_to_index(mv.to)[1]-mv.dir_rook[1])) == oth_mv.to or
-                    Piece._index_to_pos((Piece._pos_to_index(mv.to)[0],Piece._pos_to_index(mv.to)[1])) == oth_mv.to) and
+                    if (((mv.to[0]-mv.dir_rook[0], mv.to[1]-mv.dir_rook[1]) == oth_mv.to or
+                    (mv.to[0], mv.to[1]) == oth_mv.to) and
                     oth_mv.pot_threat and
                     mv not in rm_mv): 
                         rm_mv.append(mv)
@@ -357,8 +356,8 @@ def ask_move() -> tuple[str, str]:
     ipt = input('\nNext move ("from to" format, ex: "e2 e4") : ')
     pattern = re.compile('^[a-h][1-8] [a-h][1-8]$')
     if not pattern.match(ipt):
-        return ('z9','z9') # return un move impossible (pas dans la liste) pour que ça reset l'affichage
-    return tuple(ipt.split(' '))
+        return (-1,-1) # return un move impossible (pas dans la liste) pour que ça reset l'affichage
+    return tuple(map(lambda pos:Piece._pos_to_index(pos), ipt.split(' ')))
 
 def find_move(_from:str, to:str, lst_mv:list[Move]) -> Move:
     save_move = None
@@ -367,14 +366,14 @@ def find_move(_from:str, to:str, lst_mv:list[Move]) -> Move:
                 save_move = move
     return save_move
 
-def move(move:Move, board:list[list[str or Piece]], game_info:dict) -> None:
+def move(move:Move, board:list[list[str|Piece]], game_info:dict) -> None:
 
         if move is not None:
 
             move.piece.moves.append(move)
 
-            findex = Piece._pos_to_index(move._from)
-            fto = Piece._pos_to_index(move.to)
+            findex = move._from
+            fto = move.to
 
             move.piece._pos = move.to
             if move.piece.not_moved: move.piece.not_moved = False
@@ -388,17 +387,17 @@ def move(move:Move, board:list[list[str or Piece]], game_info:dict) -> None:
                 board[fto[0]][fto[1]] = move.piece
 
             if move.rook:
-                rook_index = Piece._pos_to_index(move.piece_rook._pos)
+                rook_index = move.piece_rook._pos
                 new_rook_index = (fto[0]-move.dir_rook[0],fto[1]-move.dir_rook[1])
-                board[rook_index[0]][rook_index[1]] = _EMPTY_CASE
+                board[rook_index[0]][rook_index[1]] = EMPTY_CASE
                 board[new_rook_index[0]][new_rook_index[1]] = move.piece_rook
-                move.piece_rook._pos = Piece._index_to_pos(new_rook_index)
+                move.piece_rook._pos = new_rook_index
                 move.piece_rook.not_moved = False # If the rook has already moved, not rook is possible
             
-            board[findex[0]][findex[1]] = _EMPTY_CASE
+            board[findex[0]][findex[1]] = EMPTY_CASE
 
             if move.en_passant:
-                board[fto[0]-move.piece.dir][fto[1]] = _EMPTY_CASE
+                board[fto[0]-move.piece.dir][fto[1]] = EMPTY_CASE
 
             game_info['turn'] = Piece.BLACK if move.piece._color == Piece.WHITE else Piece.WHITE
 
@@ -420,7 +419,7 @@ def get_score_from_board(board:list[list[Piece|str]], psb_mv:list[Move], hd_mv:l
 
     for row in board:
         for case in row:
-            if case != _EMPTY_CASE:
+            if case != EMPTY_CASE:
                 if case._color == Piece.WHITE:
                     score += score_per_piece[case._id] * 10
                 else:
@@ -484,9 +483,6 @@ def add(*tpls) -> tuple:
         res = (res[0] + tpl[0], res[1] + tpl[1])
     return res
 
-def time(a, tpl):
-    return (a*tpl[0], a*tpl[1])
-
 #######################
 ### CONST variables ###
 #######################
@@ -494,47 +490,49 @@ def time(a, tpl):
 ASCII_UPPER_START = 65
 ASCII_LOWER_START = 97
 BOARD_SIZE = 8
-_EMPTY_CASE = '_'
+EMPTY_CASE = '_'
 
 _INIT_BOARD = [[Rook(Piece.BLACK),Night(Piece.BLACK),Bishop(Piece.BLACK),Queen(Piece.BLACK),King(Piece.BLACK),Bishop(Piece.BLACK),Night(Piece.BLACK),Rook(Piece.BLACK)],
             [Pawn(Piece.BLACK) for _ in range(8)],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
             [Pawn(Piece.WHITE) for _ in range(8)],
             [Rook(Piece.WHITE),Night(Piece.WHITE),Bishop(Piece.WHITE),Queen(Piece.WHITE),King(Piece.WHITE),Bishop(Piece.WHITE),Night(Piece.WHITE),Rook(Piece.WHITE)]]
 
-_TEST_CHECKMATE = [[Rook(Piece.BLACK),Night(Piece.BLACK),Bishop(Piece.BLACK),Queen(Piece.BLACK),King(Piece.BLACK),_EMPTY_CASE,Night(Piece.BLACK),Rook(Piece.BLACK)],
+_TEST_CHECKMATE = [[Rook(Piece.BLACK),Night(Piece.BLACK),Bishop(Piece.BLACK),Queen(Piece.BLACK),King(Piece.BLACK),EMPTY_CASE,Night(Piece.BLACK),Rook(Piece.BLACK)],
             [Pawn(Piece.BLACK) for _ in range(8)],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Bishop(Piece.BLACK)],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,Bishop(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Queen(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,Bishop(Piece.BLACK)],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,Bishop(Piece.WHITE),EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,Queen(Piece.WHITE),EMPTY_CASE,EMPTY_CASE],
             [Pawn(Piece.WHITE) for _ in range(8)],
-            [Rook(Piece.WHITE),Night(Piece.WHITE),Bishop(Piece.WHITE),_EMPTY_CASE,King(Piece.WHITE),_EMPTY_CASE,Night(Piece.WHITE),Rook(Piece.WHITE)]]
+            [Rook(Piece.WHITE),Night(Piece.WHITE),Bishop(Piece.WHITE),EMPTY_CASE,King(Piece.WHITE),EMPTY_CASE,Night(Piece.WHITE),Rook(Piece.WHITE)]]
 
-_TEST_PIN = [[_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,King(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Rook(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Queen(Piece.BLACK),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE]]
+_TEST_PIN = [[EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,King(Piece.WHITE),EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,Rook(Piece.WHITE),EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,Queen(Piece.BLACK),EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE]]
 
-_TEST_SCORE = [[_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,Night(Piece.BLACK),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [Pawn(Piece.WHITE),_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE],
-            [_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE,_EMPTY_CASE]]
+_TEST_SCORE = [[EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,Night(Piece.BLACK),EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [Pawn(Piece.WHITE),EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE],
+            [EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE]]
 
 ############
 ### main ###
 ############
+
+import time as t
 
 def main():
 
@@ -558,10 +556,10 @@ def main():
 
         show(game_board, game_info)
 
-        # print('')
-        # for mv in psb_mv: print(mv)
-        print(f"Current board score : {get_score_from_board(game_board, psb_mv, hd_mv, game_info['turn'])}\n")
-        print(f"Best move : {min_max(game_board, psb_mv, game_info)}")
+        print('')
+        for mv in psb_mv: print(mv)
+        # print(f"Current board score : {get_score_from_board(game_board, psb_mv, hd_mv, game_info['turn'])}\n")
+        # print(f"Best move : {min_max(game_board, psb_mv, game_info)}")
 
         _from, to = ask_move()
         rea_move = find_move(_from, to, psb_mv)
