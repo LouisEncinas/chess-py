@@ -1,6 +1,7 @@
 import os
 import re
 import copy
+import enum
 import numpy as np
 import anytree as at
 from termcolor import cprint
@@ -8,6 +9,12 @@ from termcolor import cprint
 ###############
 ### Classes ###
 ###############
+
+class GI(enum.Enum):
+
+    TURN = 0
+    CHECK = 1
+    CHECK_MATE = 2
 
 class Move:
 
@@ -32,10 +39,6 @@ class Move:
 
 class Piece:
 
-    """
-    No object of class "Piece" is supposed to be created
-    """
-
     PAWN = 'p'
     BISHOP = 'b'
     NIGHT = 'n'
@@ -46,11 +49,11 @@ class Piece:
     WHITE = 'w'
     BLACK = 'b'
 
-    def __init__(self, id:str, color:str) -> None:
+    def __init__(self, id:str, color:str, position:tuple) -> None:
 
         self._id = id
-        self._pos = ()
         self._color = color
+        self._pos = position
         self.not_moved = True
         self.moves:list[Move] = []
 
@@ -76,8 +79,8 @@ class Piece:
 
 class Pawn(Piece):
 
-    def __init__(self, color: str) -> None:
-        super().__init__(Piece.PAWN, color)
+    def __init__(self, color:str, position:tuple=()) -> None:
+        super().__init__(Piece.PAWN, color, position)
         self.dir = -1 if color == Piece.WHITE else 1
 
     def _possible_moves(self, board:list[list]) -> list[Move]:
@@ -117,8 +120,8 @@ class Pawn(Piece):
 
 class FiniteMovementPiece(Piece):
 
-    def __init__(self, id: str, color: str) -> None:
-        super().__init__(id, color)
+    def __init__(self, id:str, color:str, position:tuple) -> None:
+        super().__init__(id, color, position)
         self.movements:list[tuple] = []
 
     def _possible_moves(self, board: list[list]) -> list[Move]:
@@ -136,14 +139,14 @@ class FiniteMovementPiece(Piece):
 
 class Night(FiniteMovementPiece):
 
-    def __init__(self, color:str) -> None:
-        super().__init__(Piece.NIGHT, color)
+    def __init__(self, color:str, position:tuple=()) -> None:
+        super().__init__(Piece.NIGHT, color, position)
         self.movements = [(2,-1),(2,1),(1,2),(-1,2),(-2,1),(-2,-1),(-1,-2),(1,-2)]
 
 class King(FiniteMovementPiece):
     
-    def __init__(self, color: str) -> None:
-        super().__init__(Piece.KING, color)
+    def __init__(self, color:str, position:tuple=()) -> None:
+        super().__init__(Piece.KING, color, position)
         self.movements = [(1,1),(-1,1),(-1,-1),(1,-1),(0,1),(0,-1),(1,0),(-1,0)]
 
     def _possible_moves(self, board: list[list]) -> list[Move]:
@@ -164,8 +167,8 @@ class King(FiniteMovementPiece):
 
 class InfiniteMovementPiece(Piece):
 
-    def __init__(self, id: str, color: str) -> None:
-        super().__init__(id, color)
+    def __init__(self, id:str, color:str, position:tuple) -> None:
+        super().__init__(id, color, position)
         self.directions:list[tuple] = []
 
     def _possible_moves(self, board: list[list]) -> list[Move]:
@@ -182,20 +185,20 @@ class InfiniteMovementPiece(Piece):
 
 class Bishop(InfiniteMovementPiece):
 
-    def __init__(self, color:str) -> None:
-        super().__init__(Piece.BISHOP, color)
+    def __init__(self, color:str, position:tuple=()) -> None:
+        super().__init__(Piece.BISHOP, color, position)
         self.directions = [(1,1),(-1,1),(-1,-1),(1,-1)]
 
 class Rook(InfiniteMovementPiece):
 
-    def __init__(self, color: str) -> None:
-        super().__init__(Piece.ROOK, color)
+    def __init__(self, color:str, position:tuple=()) -> None:
+        super().__init__(Piece.ROOK, color, position)
         self.directions = [(0,1),(0,-1),(1,0),(-1,0)]
 
 class Queen(InfiniteMovementPiece):
 
-    def __init__(self, color: str) -> None:
-        super().__init__(Piece.QUEEN, color)
+    def __init__(self, color:str, position:tuple=()) -> None:
+        super().__init__(Piece.QUEEN, color, position)
         self.directions = [(1,1),(-1,1),(-1,-1),(1,-1),(0,1),(0,-1),(1,0),(-1,0)]
 
 #################
@@ -215,13 +218,6 @@ def convert(piece:Piece, new_type_piece:str) -> Piece:
     new_type_piece : a string entered by the player to choose which piece this pawn will become
     """
 
-    dic_pieces = {
-        Piece.NIGHT: Night,
-        Piece.BISHOP: Bishop,
-        Piece.ROOK: Rook,
-        Piece.QUEEN: Queen
-    }
-
     new_piece:Piece = dic_pieces[new_type_piece](piece._color)
     new_piece._pos = piece._pos
     new_piece._color = piece._color
@@ -230,17 +226,21 @@ def convert(piece:Piece, new_type_piece:str) -> Piece:
 
     return new_piece
 
-def initialize_pos(board:list[list]) -> None:
+def initialize_position(init_board:list[list[Piece|str]]) -> tuple[dict,np.ndarray]:
 
-    """
-    This function initialize every piece's position on the board.
-    It is called right after the board's creation
-    """
+    count = 1
+    piece_dict = {}
+    board = np.zeros((BOARD_SIZE,BOARD_SIZE), dtype='int64')
 
-    for i, row in enumerate(board):
+    for i, row in enumerate(init_board):
         for j, case in enumerate(row):
             if isinstance(case, Piece):
-                case._pos = (i,j)
+                piece_dict[count] = case
+                piece_dict[count]._pos = (i,j)
+                board[i,j] = count
+                count += 1
+
+    return piece_dict, board
 
 def get_king_pos(turn:str, board:list[list[Piece]]) -> str:
 
@@ -318,36 +318,37 @@ def is_check_mate(board:list[list[str or Piece]], player_moves:list[Move]) -> tu
     
     return player_moves == []
 
-def show_board(board:list[list[str or Piece]]):
+def show_board(piece_dict:dict, board:np.ndarray):
 
     print('   * * * * * * * * * *')
-    for index_lst, lst in enumerate(board):
-        cprint(f' {BOARD_SIZE-index_lst} *', end=' ')
-        for case in lst:
-            if isinstance(case, Piece): 
-                col = 'red' if case._color == Piece.WHITE else 'blue'
-                cprint(case._id, col, end=' ')
+    for i in range(BOARD_SIZE):
+        cprint(f' {BOARD_SIZE-i} *', end=' ')
+        for j in range(BOARD_SIZE):
+            if board[i,j]:
+                piece = piece_dict[board[i,j]]
+                col = 'red' if piece._color == Piece.WHITE else 'blue'
+                cprint(piece._id, col, end=' ')
             else:
-                cprint(f'{case}', end=' ')
+                cprint(EMPTY_CASE, end=' ')
         print('*')
     print('   * * * * * * * * * *\n     a b c d e f g h')
 
-def show(board:list[list[str or Piece]], game_info:dict) -> None:
+def show(piece_dict:dict, board:np.ndarray, game_info:dict) -> None:
 
         clear()
-        show_board(board)
+        show_board(piece_dict, board)
 
         cprint('\nTurn : ', end='')
 
         ccm_string = ''
-        col = 'red' if game_info['turn'] == Piece.WHITE else 'blue'
-        name = 'White' if game_info['turn'] == Piece.WHITE else 'Black'
+        col = 'red' if game_info[GI.TURN] == Piece.WHITE else 'blue'
+        name = 'White' if game_info[GI.TURN] == Piece.WHITE else 'Black'
 
-        cprint(f"{game_info['turn']}", col, end='\n')
+        cprint(f"{game_info[GI.TURN]}", col, end='\n')
 
-        if game_info['check']:
+        if game_info[GI.CHECK]:
             ccm_string = f'\n{name} in check'
-            if game_info['check_mate']:
+            if game_info[GI.CHECK_MATE]:
                 ccm_string += ' mate'
 
         cprint(ccm_string, col, end='\n')
@@ -487,10 +488,23 @@ def add(*tpls) -> tuple:
 ### CONST variables ###
 #######################
 
+dic_pieces = {
+        Piece.PAWN: Pawn,
+        Piece.NIGHT: Night,
+        Piece.BISHOP: Bishop,
+        Piece.ROOK: Rook,
+        Piece.QUEEN: Queen,
+        Piece.KING: King
+    }
+
 ASCII_UPPER_START = 65
 ASCII_LOWER_START = 97
 BOARD_SIZE = 8
 EMPTY_CASE = '_'
+
+##############################
+###### INITIAL POSITION ######
+##############################
 
 _INIT_BOARD = [[Rook(Piece.BLACK),Night(Piece.BLACK),Bishop(Piece.BLACK),Queen(Piece.BLACK),King(Piece.BLACK),Bishop(Piece.BLACK),Night(Piece.BLACK),Rook(Piece.BLACK)],
             [Pawn(Piece.BLACK) for _ in range(8)],
@@ -532,46 +546,45 @@ _TEST_SCORE = [[EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CASE,EMPTY_CAS
 ### main ###
 ############
 
-import time as t
-
 def main():
 
     ### Initialize board ###
-    game_board = _INIT_BOARD
-    initialize_pos(game_board)
+    piece_dict, board = initialize_position(_INIT_BOARD)
+
+    ### Initialize game information
     game_info = {
-        'turn' : Piece.WHITE,
-        'check' : False,
-        'check_mate' : False
+        GI.TURN : Piece.WHITE,
+        GI.CHECK : False,
+        GI.CHECK_MATE : False
     }
 
-    ### Possible moves ###
-    psb_mv, hd_mv = possible_moves(game_board, game_info['turn'])
-    king_pos = get_king_pos(game_info['turn'], game_board)
-    game_info['check'] = is_check(king_pos, hd_mv)
-    game_info['check_mate'] = is_check_mate(game_board, psb_mv)
+    # ### Possible moves ###
+    # psb_mv, hd_mv = possible_moves(game_board, game_info['turn'])
+    # king_pos = get_king_pos(game_info['turn'], game_board)
+    # game_info['check'] = is_check(king_pos, hd_mv)
+    # game_info['check_mate'] = is_check_mate(game_board, psb_mv)
 
-    ### Mainloop ###
-    while not game_info['check_mate']:
+    # ### Mainloop ###
+    # while not game_info['check_mate']:
 
-        show(game_board, game_info)
+    #     show(game_board, game_info)
 
-        print('')
-        for mv in psb_mv: print(mv)
-        # print(f"Current board score : {get_score_from_board(game_board, psb_mv, hd_mv, game_info['turn'])}\n")
-        # print(f"Best move : {min_max(game_board, psb_mv, game_info)}")
+    #     # print('')
+    #     # for mv in psb_mv: print(mv)
+    #     # print(f"Current board score : {get_score_from_board(game_board, psb_mv, hd_mv, game_info['turn'])}\n")
+    #     # print(f"Best move : {min_max(game_board, psb_mv, game_info)}")
 
-        _from, to = ask_move()
-        rea_move = find_move(_from, to, psb_mv)
-        move(rea_move, game_board, game_info)
+    #     _from, to = ask_move()
+    #     rea_move = find_move(_from, to, psb_mv)
+    #     move(rea_move, game_board, game_info)
 
-        psb_mv, hd_mv = possible_moves(game_board, game_info['turn'])
-        king_pos = get_king_pos(game_info['turn'], game_board)
-        game_info['check'] = is_check(king_pos, hd_mv)
-        game_info['check_mate'] = is_check_mate(game_board, psb_mv)
+    #     psb_mv, hd_mv = possible_moves(game_board, game_info['turn'])
+    #     king_pos = get_king_pos(game_info['turn'], game_board)
+    #     game_info['check'] = is_check(king_pos, hd_mv)
+    #     game_info['check_mate'] = is_check_mate(game_board, psb_mv)
 
-    ### Show final position and winner ###
-    show(game_board, game_info)
+    # ### Show final position and winner ###
+    # show(game_board, game_info)
 
 if __name__ == '__main__':
     main()
