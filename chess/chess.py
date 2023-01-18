@@ -74,7 +74,7 @@ class Piece:
     def _on_edge(index:tuple[int]) -> bool:
         return index[0] == 0 or index[0] == 7 or index[1] == 0 or index[1] == 7
 
-    def _possible_moves(self, board:list[list]) -> list[Move]:
+    def _possible_moves(self, piece_dict:dict, board:np.ndarray) -> list[Move]:
         pass
 
 class Pawn(Piece):
@@ -82,39 +82,31 @@ class Pawn(Piece):
     def __init__(self, color:str, position:tuple=()) -> None:
         super().__init__(Piece.PAWN, color, position)
         self.dir = -1 if color == Piece.WHITE else 1
+        self.straight_movements = (self.dir,0)
+        self.eating_movements = [(self.dir,-1),(self.dir,1)]
+        self.ep_movements = [(0,-1),(0,1)]
 
-    def _possible_moves(self, board:list[list]) -> list[Move]:
+    def _possible_moves(self, piece_dict:dict[int,Piece], board:np.ndarray) -> list[Move]:
 
         psb_mv = []
         index = self._pos
         upgrade = True if ((self._color == Piece.WHITE and index[0] == 1) or (self._color == Piece.BLACK and index[0] == 6)) else False
         lim = 2 if self.not_moved else 1
 
-        straight_movements = (self.dir,0)
-        eating_movements = [(self.dir,-1),(self.dir,1)]
-        ep_movements = [(0,-1),(0,1)]
-
-        new_index = (index[0]+straight_movements[0],index[1]+straight_movements[1])
-        while (-1 < new_index[0] < 8 and -1 < new_index[1] < 8) and board[new_index[0]][new_index[1]] == EMPTY_CASE and abs(new_index[0]-index[0]) <= lim:
+        new_index = (index[0]+self.straight_movements[0],index[1]+self.straight_movements[1])
+        while in_bound(new_index) and not board[new_index] and abs(new_index[0]-index[0]) <= lim:
             psb_mv.append(Move(index, new_index, self, upgrade=upgrade, pot_threat=False))
-            new_index = (new_index[0]+straight_movements[0],new_index[1]+straight_movements[1])
+            new_index = add(new_index, self.straight_movements)
 
-        for em in eating_movements:
-            new_index = (index[0]+em[0],index[1]+em[1])
-            if -1 < new_index[0] < 8 and -1 < new_index[1] < 8:
-                arrival_case = board[new_index[0]][new_index[1]]
-                if isinstance(arrival_case, Piece):
-                    if arrival_case._color != self._color: psb_mv.append(Move(index, new_index, self, take=True, upgrade=upgrade))
-
-        for epm in ep_movements:
-            look_index = (index[0]+epm[0],index[1]+epm[1])
-            arrival_index = (index[0]+epm[0]+self.dir,index[1]+epm[1])
-            if (-1 < arrival_index[0] < 8 and -1 < arrival_index[1] < 8):
-                look_case = board[look_index[0]][look_index[1]]
-                arrival_case = board[arrival_index[0]][arrival_index[1]]
-                if index[0] in [3,4] and isinstance(look_case, Pawn) and look_case._color != self._color and len(look_case.moves) == 1:
-                    # Mouvement en passant à corriger -> Si le pion ne prend pas en passant directement après le mouvement du pion ennemi, il ne pourra plus prendre en passant
-                    psb_mv.append(Move(index, arrival_index, self, upgrade=upgrade, take=True, en_passant=True))
+        for em, epm in zip(self.eating_movements, self.ep_movements):
+            new_index = add(index, em)
+            look_index = add(index, epm)
+            if in_bound(new_index):
+                new_case = board[new_index]; look_case = board[look_index]
+                if new_case and piece_dict[new_case]._color != self._color:
+                    psb_mv.append(Move(index, new_index, self, take=True, upgrade=upgrade))
+                if index[0] in [3,4] and look_case and piece_dict[look_case]._id == Piece.PAWN and piece_dict[look_case]._color != self._color and len(piece_dict[look_case].moves) == 1:
+                    psb_mv.append(Move(index, look_index, self, upgrade=upgrade, take=True, en_passant=True))
 
         return psb_mv
 
@@ -124,17 +116,19 @@ class FiniteMovementPiece(Piece):
         super().__init__(id, color, position)
         self.movements:list[tuple] = []
 
-    def _possible_moves(self, board: list[list]) -> list[Move]:
+    def _possible_moves(self, piece_dict:dict[int,Piece], board:np.ndarray) -> list[Move]:
+
         psb_mv = []
         index = self._pos
+
         for movement in self.movements:
-            new_index = (index[0]+movement[0],index[1]+movement[1])
-            if -1 < new_index[0] < 8 and -1 < new_index[1] < 8:
-                arrival_case = board[new_index[0]][new_index[1]]
-                if arrival_case == EMPTY_CASE:
-                    psb_mv.append(Move(index, new_index, self))
-                elif isinstance(arrival_case, Piece) and arrival_case._color != self._color:
+            new_index = add(index, movement)
+            if in_bound(new_index):
+                new_case = board[new_index]
+                if new_case and piece_dict[new_case]._color != self._color:
                     psb_mv.append(Move(index, new_index, self, take=True))
+                elif not new_case:
+                    psb_mv.append(Move(index, new_index, self))
         return psb_mv
 
 class Night(FiniteMovementPiece):
@@ -148,19 +142,20 @@ class King(FiniteMovementPiece):
     def __init__(self, color:str, position:tuple=()) -> None:
         super().__init__(Piece.KING, color, position)
         self.movements = [(1,1),(-1,1),(-1,-1),(1,-1),(0,1),(0,-1),(1,0),(-1,0)]
+        self.rook_dirs = [(0,1),(0,-1)]
 
-    def _possible_moves(self, board: list[list]) -> list[Move]:
-        psb_mv = super()._possible_moves(board)
+    def _possible_moves(self, piece_dict:dict[int,Piece], board:np.ndarray) -> list[Move]:
+
+        psb_mv = super()._possible_moves(piece_dict, board)
         # Check for rook possibilities
-        dirs = [(0,1),(0,-1)]
         index = self._pos
         if self.not_moved:
-            for dir in dirs:
+            for dir in self.rook_dirs:
                 new_index = add(index,dir)
-                while 0 < new_index[1] < 7 and board[new_index[0]][new_index[1]] == EMPTY_CASE:
+                while 0 < new_index[1] < 7 and not board[new_index]:
                     new_index = add(new_index,dir)
-                look_case = board[new_index[0]][new_index[1]]
-                if isinstance(look_case, Rook) and look_case.not_moved:
+                look_case = board[new_index]
+                if look_case and piece_dict[look_case]._id == Piece.ROOK and look_case.not_moved:
                     psb_mv.append(Move(index, (index[0]+2*dir[0],index[1]+2*dir[1]), self, rook=True, dir_rook=dir, piece_rook=look_case))
         
         return psb_mv
@@ -171,15 +166,16 @@ class InfiniteMovementPiece(Piece):
         super().__init__(id, color, position)
         self.directions:list[tuple] = []
 
-    def _possible_moves(self, board: list[list]) -> list[Move]:
+    def _possible_moves(self, piece_dict:dict[int,Piece], board:np.ndarray) -> list[Move]:
+
         psb_mv = []
         index = self._pos
-        for tpl in self.directions:
-            new_index = (index[0]+tpl[0],index[1]+tpl[1])
-            while -1 < new_index[0] < 8 and -1 < new_index[1] < 8 and board[new_index[0]][new_index[1]] == EMPTY_CASE:
+        for dir in self.directions:
+            new_index = add(index,dir)
+            while in_bound(new_index) and not board[new_index]:
                 psb_mv.append(Move(index, new_index, self))
-                new_index = (new_index[0]+tpl[0],new_index[1]+tpl[1])
-            if not self._on_edge((new_index[0]-tpl[0],new_index[1]-tpl[1])) and isinstance(board[new_index[0]][new_index[1]], Piece) and board[new_index[0]][new_index[1]]._color != self._color:
+                new_index = add(new_index,dir)
+            if not self._on_edge(minus(new_index,dir)) and board[new_index] and piece_dict[board[new_index]]._color != self._color:
                 psb_mv.append(Move(index, new_index, self, take=True))
         return psb_mv
 
@@ -210,7 +206,7 @@ class Queen(InfiniteMovementPiece):
 ###########################
 
 def convert(piece:Piece, new_type_piece:str) -> Piece:
-
+#!
     """
     This function is called when a pawn arrives at the edge of the board
     
@@ -242,65 +238,53 @@ def initialize_position(init_board:list[list[Piece|str]]) -> tuple[dict,np.ndarr
 
     return piece_dict, board
 
-def get_king_pos(turn:str, board:list[list[Piece]]) -> str:
-
-    """
-    Return the position of the king of the indicated color on the board
-    """
-
-    for row in board:
-        for case in row:
-            if isinstance(case,King) and case._color == turn:
-                return case._pos
+def get_king_pos(turn:str, piece_dict:dict[int,Piece]) -> tuple:
+    for piece in piece_dict.values():
+        if piece._id == Piece.KING and piece._color == turn:
+            return piece._pos
 
 ############################
 ###### Main functions ######
 ############################
 
-def possible_moves(board:list[list], turn:str) -> tuple[list[Move],list[Move]]:
+def possible_moves(piece_dict:dict[int,Piece], board:np.ndarray, turn:str) -> tuple[list[Move],list[Move]]:
 
-        # Create two lists, one containing the player moves and another containing the ennemy moves
-        psb_mv_player:list[Move] = []
-        psb_mv_holder:list[Move] = []
+    # Create two lists, one containing the player moves and another containing the ennemy moves
+    psb_mv_player:list[Move] = []
+    psb_mv_holder:list[Move] = []
+    rook_mv:list[Move] = []
 
-        for row in board:
-            for case in row:
-                if isinstance(case, Piece): 
-                    if case._color == turn: psb_mv_player += case._possible_moves(board)
-                    else: psb_mv_holder += case._possible_moves(board)
+    for piece in piece_dict.values():
+        mvs = piece._possible_moves(piece_dict, board)
+        rook_mv += [mv for mv in mvs if mv.rook]
+        if piece._color == turn: psb_mv_player += mvs
+        else: psb_mv_holder += mvs
 
-        rm_mv:list[Move] = []
-        for mv in psb_mv_player + psb_mv_holder:
-            if isinstance(mv.piece, King) and mv.rook:
-                loop_lst = psb_mv_holder if mv.piece._color == turn else psb_mv_player
-                for oth_mv in loop_lst:
-                    if (((mv.to[0]-mv.dir_rook[0], mv.to[1]-mv.dir_rook[1]) == oth_mv.to or
-                    (mv.to[0], mv.to[1]) == oth_mv.to) and
-                    oth_mv.pot_threat and
-                    mv not in rm_mv): 
-                        rm_mv.append(mv)
-            
-        for mv in rm_mv:
-            if mv.piece._color == turn: psb_mv_player.remove(mv)
-            else: psb_mv_holder.remove(mv)
-                        
-        return psb_mv_player, psb_mv_holder
+    rm_mv:list[Move] = []
+    for mv in rook_mv:
+        loop_lst = psb_mv_holder if mv.piece._color == turn else psb_mv_player
+        for oth_mv in loop_lst:
+            if (minus(mv.to, mv.dir_rook) == oth_mv.to or mv.to == oth_mv.to) and oth_mv.pot_threat and mv not in rm_mv: 
+                rm_mv.append(mv)
+        
+    for mv in rm_mv:
+        if mv.piece._color == turn: psb_mv_player.remove(mv)
+        else: psb_mv_holder.remove(mv)
+                    
+    return psb_mv_player, psb_mv_holder
 
 def is_check(king_pos:str, holder_moves:list[Move]) -> bool:
 
     # Return if the current player is in check state
-    check = False
-
     for hd_mv in holder_moves:
         if hd_mv.to == king_pos and hd_mv.pot_threat:
-            check = True
-
-    return check
+            return True
+    return False
 
 
 def is_check_mate(board:list[list[str or Piece]], player_moves:list[Move]) -> tuple[bool,list[bool]]:
-    
-    # Return if the current player is in check_state
+#!!
+    # Return if the current player is in checkmate state
     lst_check = []
     for pl_mv in player_moves:
         next_move_board = copy.deepcopy(board)
@@ -354,6 +338,7 @@ def show(piece_dict:dict, board:np.ndarray, game_info:dict) -> None:
         cprint(ccm_string, col, end='\n')
 
 def ask_move() -> tuple[str, str]:
+#!
     ipt = input('\nNext move ("from to" format, ex: "e2 e4") : ')
     pattern = re.compile('^[a-h][1-8] [a-h][1-8]$')
     if not pattern.match(ipt):
@@ -361,23 +346,24 @@ def ask_move() -> tuple[str, str]:
     return tuple(map(lambda pos:Piece._pos_to_index(pos), ipt.split(' ')))
 
 def find_move(_from:str, to:str, lst_mv:list[Move]) -> Move:
+#!
     save_move = None
     for move in lst_mv:
         if move._from == _from and move.to == to:
                 save_move = move
     return save_move
 
-def move(move:Move, board:list[list[str|Piece]], game_info:dict) -> None:
-
+def move(move:Move, piece_dict:dict[int,Piece], board:np.ndarray, game_info:dict) -> None:
+#!
         if move is not None:
-
-            move.piece.moves.append(move)
 
             findex = move._from
             fto = move.to
+            move.piece.moves.append(move)
+            move.piece._pos = fto
 
-            move.piece._pos = move.to
-            if move.piece.not_moved: move.piece.not_moved = False
+            if move.piece.not_moved:
+                move.piece.not_moved = False
 
             if move.upgrade:
                 # print('\nNew type of piece : (n, b, r, q)')
@@ -402,12 +388,15 @@ def move(move:Move, board:list[list[str|Piece]], game_info:dict) -> None:
 
             game_info['turn'] = Piece.BLACK if move.piece._color == Piece.WHITE else Piece.WHITE
 
+def undo_move(move:Move, piece_dict:dict[int,Piece], board:np.ndarray, game_info:dict):
+    pass
+
 ##################################
 ###### Evuluation functions ######
 ##################################
 
 def get_score_from_board(board:list[list[Piece|str]], psb_mv:list[Move], hd_mv:list[Move], turn:str) -> int:
-
+#!
     score = 0
     score_per_piece = {
         Piece.PAWN: 1,
@@ -436,7 +425,7 @@ def get_score_from_board(board:list[list[Piece|str]], psb_mv:list[Move], hd_mv:l
 def define_tree(
     board:list[list[Piece|str]], psb_mv:list[Move], game_info:dict,
     root:at.Node=None, depth=1):
-
+#!
     # Définition de la racine de l'arbre si aucun noeud n'a été passé
     if root is None:
         root = at.Node('root')
@@ -459,7 +448,7 @@ def define_tree(
     if depth == 1: return root
 
 def min_max(board:list[list[Piece|str]], psb_mv:list[Move], game_info:dict):
-
+#!
     tree = define_tree(board, psb_mv, game_info)
 
     if game_info['turn'] == Piece.WHITE:
@@ -478,11 +467,14 @@ def min_max(board:list[list[Piece|str]], psb_mv:list[Move], game_info:dict):
 def clear() -> None:
     os.system('cls' if os.name == 'nt' else 'clear')
 
-def add(*tpls) -> tuple:
-    res = (0,0)
-    for tpl in tpls:
-        res = (res[0] + tpl[0], res[1] + tpl[1])
-    return res
+def add(ftpl, stpl) -> tuple:
+    return (ftpl[0] + stpl[0], ftpl[1] + stpl[1])
+
+def minus(ftpl, stpl) -> tuple:
+    return (ftpl[0] - stpl[0], ftpl[1] - stpl[1])
+
+def in_bound(pos:tuple) -> bool:
+    return -1 < pos[0] < 8 and -1 < pos[1] < 8
 
 #######################
 ### CONST variables ###
@@ -557,6 +549,10 @@ def main():
         GI.CHECK : False,
         GI.CHECK_MATE : False
     }
+
+    psb_mv, hd_mv = possible_moves(piece_dict, board, game_info[GI.TURN])
+    for mv in psb_mv:
+        print(mv)
 
     # ### Possible moves ###
     # psb_mv, hd_mv = possible_moves(game_board, game_info['turn'])
