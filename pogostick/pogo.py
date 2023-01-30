@@ -128,25 +128,30 @@ def point_in_rect(point:Vector2D, r:pygame.Rect):
         return Collision.LIST[lst.index(min(lst))]
     return Collision.NONE
 
-pygame.init()
-clock = pygame.time.Clock()
-frame_rate = 60
-delta_time = 1/frame_rate
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-player = Player(position=Vector2D(((SCREEN_WIDTH - PLAYER_WIDTH)/2, (SCREEN_HEIGHT - PLAYER_HEIGHT)/2)))
-floor = Block(Vector2D((0,SCREEN_HEIGHT - 100)), Vector2D((SCREEN_WIDTH, 100)))
-        
-while True:
+def main():
+    
+    pygame.init()
+    clock = pygame.time.Clock()
+    frame_rate = 60
+    delta_time = 1/frame_rate
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    player = Player(position=Vector2D(((SCREEN_WIDTH - PLAYER_WIDTH)/2, (SCREEN_HEIGHT - PLAYER_HEIGHT)/2)))
+    floor = Block(Vector2D((0,SCREEN_HEIGHT - 100)), Vector2D((SCREEN_WIDTH, 100)))
+            
+    while True:
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            sys.exit()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                sys.exit()
 
-    player.update(delta_time, 10, [floor.hitbox])
+        player.update(delta_time, 10, [floor.hitbox])
 
-    clock.tick(frame_rate)
-    screen.fill((0,0,0))
-    player.draw(screen)
-    floor.draw(screen)
+        clock.tick(frame_rate)
+        screen.fill((0,0,0))
+        player.draw(screen)
+        floor.draw(screen)
 
-    pygame.display.update()
+        pygame.display.update()
+
+if __name__ == '__main__':
+    main()
