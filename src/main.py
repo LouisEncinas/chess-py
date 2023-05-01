@@ -1,10 +1,8 @@
 import os
 import re
-import copy
 import enum
 import numpy as np
 import anytree as at
-from termcolor import cprint
 
 ###############
 ### Classes ###
@@ -473,6 +471,10 @@ ASCII_LOWER_START = 97
 BOARD_SIZE = 8
 EMPTY_CASE = '_'
 
+GREEN = '\033[92m'
+RED = '\033[91m'
+RESET = '\033[0m'
+
 ##############################
 ###### INITIAL POSITION ######
 ##############################
@@ -534,14 +536,14 @@ def show_board(piece_dict:dict, board:np.ndarray):
 
     print('   * * * * * * * * * *')
     for i in range(BOARD_SIZE):
-        cprint(f' {BOARD_SIZE-i} *', end=' ')
+        print(f' {BOARD_SIZE-i} *', end=' ')
         for j in range(BOARD_SIZE):
             if board[i,j]:
                 piece = piece_dict[board[i,j]]
-                col = 'red' if piece._color == Piece.WHITE else 'blue'
-                cprint(piece._id, col, end=' ')
+                col = RED if piece._color == Piece.WHITE else GREEN
+                print(col + piece._id + RESET, end=' ')
             else:
-                cprint(EMPTY_CASE, end=' ')
+                print(EMPTY_CASE, end=' ')
         print('*')
     print('   * * * * * * * * * *\n     a b c d e f g h')
 
@@ -550,20 +552,20 @@ def show(piece_dict:dict, board:np.ndarray, game_info:dict) -> None:
         clear()
         show_board(piece_dict, board)
 
-        cprint('\nTurn : ', end='')
+        print('\nTurn : ', end='')
 
         ccm_string = ''
-        col = 'red' if game_info[GI.TURN] == Piece.WHITE else 'blue'
+        col = RED if game_info[GI.TURN] == Piece.WHITE else GREEN
         name = 'White' if game_info[GI.TURN] == Piece.WHITE else 'Black'
 
-        cprint(f"{game_info[GI.TURN]}", col, end='\n')
+        print(col + f"{game_info[GI.TURN]}" + RESET, end='\n')
 
         if game_info[GI.CHECK]:
             ccm_string = f'\n{name} in check'
             if game_info[GI.CHECK_MATE]:
                 ccm_string += ' mate'
 
-        cprint(ccm_string, col, end='\n')
+        print(col + ccm_string + RESET, end='\n')
 
 ############
 ### main ###
