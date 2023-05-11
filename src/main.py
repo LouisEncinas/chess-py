@@ -1,14 +1,26 @@
 import os
 import re
-import enum
-import numpy as np
-import anytree as at
+from enum  import Enum
+from numpy import zeros, uint8, ndarray
+
+#################
+### CONSTANTS ###
+#################
+
+ASCII_UPPER_START = 65
+ASCII_LOWER_START = 97
+BOARD_SIZE = 8
+EMPTY_CASE = '_'
+
+GREEN = '\033[92m'
+RED = '\033[91m'
+RESET = '\033[0m'
 
 ###############
 ### Classes ###
 ###############
 
-class GI(enum.Enum):
+class GI(Enum):
 
     TURN = 0
     CHECK = 1
@@ -16,7 +28,13 @@ class GI(enum.Enum):
 
 class Move:
 
-    def __init__(self, _from:tuple, to:tuple, piece:int, take:bool=False, piece_take:int=None, upgrade:bool=False, en_passant:bool=False, rook:bool=False, dir_rook:tuple=None, piece_rook:int=None, pot_threat:bool=True) -> None:
+    def __init__(self,
+        _from:tuple, to:tuple,
+        piece:int,
+        take:bool=False, piece_take:int=None,
+        upgrade:bool=False, en_passant:bool=False,
+        rook:bool=False, dir_rook:tuple=None, piece_rook:int=None,
+        pot_threat:bool=True) -> None:
 
         self._from = _from
         self.to = to
@@ -80,7 +98,7 @@ class Piece:
     def _on_edge(index:tuple[int]) -> bool:
         return index[0] == 0 or index[0] == 7 or index[1] == 0 or index[1] == 7
 
-    def _possible_moves(self, piece_dict:dict, board:np.ndarray) -> list[Move]:
+    def _possible_moves(self, piece_dict:dict, board:ndarray) -> list[Move]:
         pass
 
 class Pawn(Piece):
@@ -92,7 +110,7 @@ class Pawn(Piece):
         self.eating_movements = [(self.dir,-1),(self.dir,1)]
         self.ep_movements = [(0,-1),(0,1)]
 
-    def _possible_moves(self, piece_dict:dict[int,Piece], board:np.ndarray) -> list[Move]:
+    def _possible_moves(self, piece_dict:dict[int,Piece], board:ndarray) -> list[Move]:
 
         psb_mv = []
         index = self._pos
@@ -122,7 +140,7 @@ class FiniteMovementPiece(Piece):
         super().__init__(id, color, position)
         self.movements:list[tuple] = []
 
-    def _possible_moves(self, piece_dict:dict[int,Piece], board:np.ndarray) -> list[Move]:
+    def _possible_moves(self, piece_dict:dict[int,Piece], board:ndarray) -> list[Move]:
 
         psb_mv = []
         index = self._pos
@@ -150,7 +168,7 @@ class King(FiniteMovementPiece):
         self.movements = [(1,1),(-1,1),(-1,-1),(1,-1),(0,1),(0,-1),(1,0),(-1,0)]
         self.rook_dirs = [(0,1),(0,-1)]
 
-    def _possible_moves(self, piece_dict:dict[int,Piece], board:np.ndarray) -> list[Move]:
+    def _possible_moves(self, piece_dict:dict[int,Piece], board:ndarray) -> list[Move]:
 
         psb_mv = super()._possible_moves(piece_dict, board)
         # Check for rook possibilities
@@ -172,7 +190,7 @@ class InfiniteMovementPiece(Piece):
         super().__init__(id, color, position)
         self.directions:list[tuple] = []
 
-    def _possible_moves(self, piece_dict:dict[int,Piece], board:np.ndarray) -> list[Move]:
+    def _possible_moves(self, piece_dict:dict[int,Piece], board:ndarray) -> list[Move]:
 
         psb_mv = []
         index = self._pos
@@ -221,11 +239,11 @@ def convert(piece:Piece, new_type_piece:str) -> Piece:
 
     return new_piece
 
-def initialize_position(init_board:list[list[Piece|str]]) -> tuple[dict,np.ndarray]:
+def initialize_position(init_board:list[list[Piece|str]]) -> tuple[dict,ndarray]:
 
     count = 1
     piece_dict = {}
-    board = np.zeros((BOARD_SIZE,BOARD_SIZE), dtype='int64')
+    board = zeros((BOARD_SIZE,BOARD_SIZE), dtype=uint8)
 
     for i, row in enumerate(init_board):
         for j, case in enumerate(row):
@@ -246,7 +264,7 @@ def get_king_pos(turn:str, piece_dict:dict[int,Piece]) -> tuple:
 ###### Main functions ######
 ############################
 
-def possible_moves(piece_dict:dict[int,Piece], board:np.ndarray, turn:str) -> tuple[list[Move],list[Move]]:
+def possible_moves(piece_dict:dict[int,Piece], board:ndarray, turn:str) -> tuple[list[Move],list[Move]]:
 
     # Create two lists, one containing the player moves and another containing the ennemy moves
     psb_mv_player:list[Move] = []
@@ -280,7 +298,7 @@ def is_check(king_pos:str, holder_moves:list[Move]) -> bool:
             return True
     return False
 
-def is_check_mate(piece_dict:dict[int,Piece], board:np.ndarray, game_info:dict, player_moves:list[Move]) -> tuple[bool,list[bool]]:
+def is_check_mate(piece_dict:dict[int,Piece], board:ndarray, game_info:dict, player_moves:list[Move]) -> tuple[bool,list[bool]]:
 
     # Return if the current player is in checkmate state
     lst_check = []
@@ -295,7 +313,7 @@ def is_check_mate(piece_dict:dict[int,Piece], board:np.ndarray, game_info:dict, 
     for mv in lst_check: player_moves.remove(mv)  
     return player_moves == []
 
-def move(move:Move, piece_dict:dict[int,Piece], board:np.ndarray, game_info:dict) -> None:
+def move(move:Move, piece_dict:dict[int,Piece], board:ndarray, game_info:dict) -> None:
 
     findex = move._from
     fto = move.to
@@ -336,7 +354,7 @@ def move(move:Move, piece_dict:dict[int,Piece], board:np.ndarray, game_info:dict
 
     game_info[GI.TURN] = Piece.BLACK if piece._color == Piece.WHITE else Piece.WHITE
 
-def undo_move(move:Move, piece_dict:dict[int,Piece], board:np.ndarray, game_info:dict):
+def undo_move(move:Move, piece_dict:dict[int,Piece], board:ndarray, game_info:dict):
 
     departure = move._from
     arrival = move.to
@@ -373,7 +391,7 @@ def undo_move(move:Move, piece_dict:dict[int,Piece], board:np.ndarray, game_info
 ##################################
 
 def get_score_from_board(piece_dict:dict[int,Piece], psb_mv:list[Move], hd_mv:list[Move], turn:str) -> int:
-#!
+
     score = 0
     score_per_piece = {
         Piece.PAWN: 1,
@@ -397,45 +415,6 @@ def get_score_from_board(piece_dict:dict[int,Piece], psb_mv:list[Move], hd_mv:li
         score = score - len(psb_mv) + len(hd_mv)
 
     return score
-
-def define_tree(
-    piece_dict:dict[int,Piece], board:np.ndarray, psb_mv:list[Move], game_info:dict,
-    root:at.Node=None, depth=1):
-#!
-    # Définition de la racine de l'arbre si aucun noeud n'a été passé
-    if root is None:
-        root = at.Node('root')
-
-    for index, mv in enumerate(psb_mv):
-        move(mv, piece_dict, board, game_info)
-        pm, hm = possible_moves(piece_dict, board, game_info[GI.TURN])
-        game_info[GI.CHECK_MATE] = is_check_mate(piece_dict, board, game_info, pm)
-
-        if depth:
-            node = at.Node(f'm{index}', parent=root, move=mv)
-            define_tree(piece_dict, board, pm, game_info, node, depth=depth-1)
-        else:
-            node = at.Node(f'm{index}', parent=root, move=mv, score=get_score_from_board(piece_dict, pm, hm, game_info[GI.TURN]))
-        
-        undo_move(mv, piece_dict, board, game_info)
-
-    if depth == 1: return root
-
-def min_max(piece_dict:dict[int,Piece], board:np.ndarray, psb_mv:list[Move], game_info:dict):
-#!
-    import time
-    begin = time.time()
-    tree = define_tree(piece_dict, board, psb_mv, game_info)
-    print(time.time() - begin)
-
-    if game_info[GI.TURN] == Piece.WHITE:
-        for fl in tree.children:
-            fl.score = min(fl.children, key=lambda l:l.score).score
-        return max(tree.children, key=lambda l:l.score).move
-    else:
-        for fl in tree.children:
-            fl.score = min(fl.children, key=lambda l:-l.score).score
-        return max(tree.children, key=lambda l:-l.score).move
 
 #######################
 ### Other functions ###
@@ -465,15 +444,6 @@ dic_pieces = {
         Piece.QUEEN: Queen,
         Piece.KING: King
     }
-
-ASCII_UPPER_START = 65
-ASCII_LOWER_START = 97
-BOARD_SIZE = 8
-EMPTY_CASE = '_'
-
-GREEN = '\033[92m'
-RED = '\033[91m'
-RESET = '\033[0m'
 
 ##############################
 ###### INITIAL POSITION ######
@@ -532,7 +502,7 @@ def ask_move() -> tuple[tuple[int], tuple[int]]:
         return (-1,-1) # return un move impossible (pas dans la liste) pour que ça reset l'affichage
     return tuple(map(lambda pos:Piece._pos_to_index(pos), ipt.split(' ')))
 
-def show_board(piece_dict:dict, board:np.ndarray):
+def show_board(piece_dict:dict, board:ndarray):
 
     print('   * * * * * * * * * *')
     for i in range(BOARD_SIZE):
@@ -547,7 +517,7 @@ def show_board(piece_dict:dict, board:np.ndarray):
         print('*')
     print('   * * * * * * * * * *\n     a b c d e f g h')
 
-def show(piece_dict:dict, board:np.ndarray, game_info:dict) -> None:
+def show(piece_dict:dict, board:ndarray, game_info:dict) -> None:
 
         clear()
         show_board(piece_dict, board)
@@ -593,11 +563,7 @@ def main():
     while not game_info[GI.CHECK_MATE]:
 
         show(piece_dict, board, game_info)
-
-        # print('')
-        # for mv in psb_mv: print(mv)
-        # print(f"Current board score : {get_score_from_board(game_board, psb_mv, hd_mv, game_info['turn'])}\n")
-        print(f"Best move : {min_max(piece_dict, board, psb_mv, game_info)}")
+        print(f"Current board score : {get_score_from_board(piece_dict, psb_mv, hd_mv, game_info[GI.TURN])}")
 
         _from, to = ask_move()
         mv = find_move(_from, to, psb_mv)
